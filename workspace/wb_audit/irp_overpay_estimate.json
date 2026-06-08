@@ -1,0 +1,14 @@
+{
+  "all_irp_pct": 1.0630483076177397,
+  "fbw_irp_pct": 1.0630483076177397,
+  "period_days": 54,
+  "monthly_factor": 0.5555555555555556,
+  "total_retail_all": 61182083.169999994,
+  "total_logistics_all": 4398817.1899999995,
+  "overpay_period_all_fbw_irp": 650395.0997039629,
+  "overpay_month_all_fbw_irp": 361330.6109466461,
+  "cosmetic_retail": 51456145.23,
+  "cosmetic_logistics": 3581212.26,
+  "overpay_period_cosmetic_fbw_irp": 547003.6810328413,
+  "overpay_month_cosmetic_fbw_irp": 303890.9339071341
+}
