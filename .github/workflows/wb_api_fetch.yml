@@ -1,0 +1,38 @@
+name: WB API — сбор данных (только чтение)
+
+on:
+  schedule:
+    # Каждый день в 06:00 UTC (09:00 MSK)
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Ручной запуск из вкладки Actions
+
+permissions:
+  contents: write  # нужно для git push результатов
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Fetch WB API data (read-only)
+        env:
+          WB_TOKEN: ${{ secrets.WB_TOKEN }}
+        run: python tools/wb_api/fetch_data.py
+
+      - name: Commit & push data
+        run: |
+          git config user.name  "wb-api-bot"
+          git config user.email "wb-api-bot@noreply"
+          git add data/wb_api/
+          # Коммитим только если есть изменения
+          git diff --cached --quiet || git commit -m "data: WB API snapshot $(date -u +%Y-%m-%d)"
+          git push
