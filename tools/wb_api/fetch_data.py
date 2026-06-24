@@ -1,14 +1,14 @@
 """Сбор данных из WB API (только чтение) → data/wb_api/.
 
-Все запросы — GET, без изменений в кабинете WB.
+Доступен из GitHub Actions только statistics-api.wildberries.ru.
+suppliers-api.wildberries.ru не резолвится из облачных runners GitHub.
 """
 import os, json, time, datetime, requests
 from pathlib import Path
 
 WB_TOKEN = os.getenv('WB_TOKEN', '')
 
-BASE_STAT   = 'https://statistics-api.wildberries.ru'
-BASE_SUPPLY = 'https://suppliers-api.wildberries.ru'
+BASE_STAT = 'https://statistics-api.wildberries.ru'
 
 OUT = Path(__file__).parent.parent.parent / 'data' / 'wb_api'
 OUT.mkdir(parents=True, exist_ok=True)
@@ -24,9 +24,9 @@ def get(base, path, params=None, retries=3):
     url = base.rstrip('/') + '/' + path.lstrip('/')
     for attempt in range(retries):
         try:
-            r = requests.get(url, headers=headers(), params=params, timeout=30)
+            r = requests.get(url, headers=headers(), params=params, timeout=60)
             if r.status_code == 429:
-                time.sleep(2 ** attempt)
+                time.sleep(60)
                 continue
             r.raise_for_status()
             return r.json()
@@ -39,23 +39,63 @@ def get(base, path, params=None, retries=3):
 def save(name, data):
     path = OUT / f'{name}.json'
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-    print(f'  ok {path.name} — {len(data) if isinstance(data, list) else "ok"}')
+    size = len(data) if isinstance(data, list) else path.stat().st_size
+    print(f'  ok {path.name} — {size}')
 
 
-TASKS = {
-    'warehouses':    lambda: get(BASE_SUPPLY, '/api/v3/offices'),
-    'orders':        lambda: get(BASE_SUPPLY, '/api/v3/orders',
-                         params={'dateFrom': (datetime.date.today()-datetime.timedelta(days=90)).isoformat(), 'next': 0}),
-    'sales':         lambda: get(BASE_STAT, '/api/v1/supplier/sales',
-                         params={'dateFrom': (datetime.date.today()-datetime.timedelta(days=90)).isoformat(), 'flag': 0}),
-    'report_detail': lambda: get(BASE_STAT, '/api/v1/supplier/reportDetailByPeriod',
-                         params={'dateFrom': (datetime.date.today()-datetime.timedelta(days=30)).isoformat(),
-                                 'dateTo': datetime.date.today().isoformat(), 'limit': 100000}),
-    'incomes':       lambda: get(BASE_STAT, '/api/v1/supplier/incomes',
-                         params={'dateFrom': (datetime.date.today()-datetime.timedelta(days=90)).isoformat()}),
-    'stocks_stat':   lambda: get(BASE_STAT, '/api/v1/supplier/stocks',
-                         params={'dateFrom': (datetime.date.today()-datetime.timedelta(days=7)).isoformat()}),
-}
+def days_ago(n):
+    return (datetime.date.today() - datetime.timedelta(days=n)).isoformat()
+
+
+def fetch_sales():
+    """Продажи и возвраты за 90 дней."""
+    data = get(BASE_STAT, '/api/v1/supplier/sales',
+               params={'dateFrom': days_ago(90), 'flag': 0})
+    save('sales', data)
+
+
+def fetch_stocks():
+    """Остатки на складах."""
+    data = get(BASE_STAT, '/api/v1/supplier/stocks',
+               params={'dateFrom': days_ago(3)})
+    save('stocks', data)
+
+
+def fetch_orders():
+    """Заказы за 90 дней (Statistics API)."""
+    data = get(BASE_STAT, '/api/v1/supplier/orders',
+               params={'dateFrom': days_ago(90), 'flag': 0})
+    save('orders', data)
+
+
+def fetch_report_detail():
+    """Детализированный финансовый отчёт за 30 дней.
+    rrdid=0 — начать с первой записи.
+    """
+    data = get(BASE_STAT, '/api/v1/supplier/reportDetailByPeriod',
+               params={
+                   'dateFrom': days_ago(30),
+                   'dateTo': datetime.date.today().isoformat(),
+                   'rrdid': 0,
+               })
+    save('report_detail', data)
+
+
+def fetch_incomes():
+    """Поставки (FBO приходы) за 90 дней."""
+    data = get(BASE_STAT, '/api/v1/supplier/incomes',
+               params={'dateFrom': days_ago(90)})
+    save('incomes', data)
+
+
+TASKS = [
+    ('sales',         fetch_sales),
+    ('stocks',        fetch_stocks),
+    ('orders',        fetch_orders),
+    ('report_detail', fetch_report_detail),
+    ('incomes',       fetch_incomes),
+]
+
 
 if __name__ == '__main__':
     print(f'WB API fetch — {datetime.date.today()}')
@@ -63,17 +103,22 @@ if __name__ == '__main__':
         raise SystemExit('WB_TOKEN не задан — выход')
 
     errors = []
-    for name, fn in TASKS.items():
+    for name, fn in TASKS:
         print(f'-> {name}')
         try:
-            save(name, fn())
+            fn()
         except Exception as e:
             print(f'  err {e}')
             errors.append((name, str(e)))
 
-    meta = {'fetched_at': datetime.datetime.utcnow().isoformat()+'Z', 'errors': errors}
+    meta = {
+        'fetched_at': datetime.datetime.utcnow().isoformat() + 'Z',
+        'errors': errors,
+        'tasks_ok': [t[0] for t in TASKS if t[0] not in {e[0] for e in errors}],
+    }
     (OUT / 'fetch_meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
     if errors:
-        raise SystemExit(f'{len(errors)} errors')
+        print(f'\n{len(errors)} ошибок: {[e[0] for e in errors]}')
+        raise SystemExit(1)
     print('Done.')
