@@ -4,3 +4,5 @@ __pycache__/
 outputs_tmp/
 *.zip
 ~$*.xlsx
+.env
+tools/wb_api/__pycache__/
