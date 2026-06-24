@@ -11,18 +11,15 @@ BASE_CONTENT= 'https://content-api.wildberries.ru'
 BASE_ANALYT = 'https://seller-analytics-api.wildberries.ru'
 BASE_PROMO  = 'https://advert-api.wildberries.ru'
 
-TOKENS = {
-    'statistics': os.getenv('WB_TOKEN_STATISTICS', ''),
-    'marketplace': os.getenv('WB_TOKEN_MARKETPLACE', ''),
-    'content':     os.getenv('WB_TOKEN_CONTENT', ''),
-    'analytics':   os.getenv('WB_TOKEN_ANALYTICS', ''),
-    'promotion':   os.getenv('WB_TOKEN_PROMOTION', ''),
-}
+# WB выдаёт ОДИН токен со всеми категориями. Поддержка старых раздельных
+# переменных оставлена как fallback.
+WB_TOKEN = (os.getenv('WB_TOKEN', '')
+            or os.getenv('WB_TOKEN_STATISTICS', ''))
 
-def _headers(token_type: str) -> dict:
-    t = TOKENS.get(token_type, '') or TOKENS.get('marketplace', '')
+def _headers(token_type: str = None) -> dict:
+    t = WB_TOKEN
     if not t:
-        raise ValueError(f'WB_TOKEN_{token_type.upper()} не задан в .env')
+        raise ValueError('WB_TOKEN не задан в .env')
     return {'Authorization': t, 'Content-Type': 'application/json'}
 
 def get(base: str, path: str, token_type: str, params: dict = None, retries: int = 3):
@@ -84,7 +81,7 @@ def get_nm_report(nm_ids: list):
                       'page': 1})
 
 if __name__ == '__main__':
-    print('Токены заданы:', {k: bool(v) for k,v in TOKENS.items()})
+    print('WB_TOKEN задан:', bool(WB_TOKEN))
     print('Тест ping Statistics API...')
     try:
         r = ping()
