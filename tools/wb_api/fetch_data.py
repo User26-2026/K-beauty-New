@@ -219,6 +219,9 @@ if __name__ == '__main__':
     (OUT / 'fetch_meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
     if errors:
+        # Частичные ошибки не валят весь прогон: то, что скачалось, должно
+        # закоммититься. Падаем только если не удалось вообще ничего.
         print(f'\n{len(errors)} ошибок: {[e[0] for e in errors]}')
-        raise SystemExit(1)
+        if len(errors) == len(TASKS):
+            raise SystemExit('Все задачи упали — выход с ошибкой')
     print('Done.')

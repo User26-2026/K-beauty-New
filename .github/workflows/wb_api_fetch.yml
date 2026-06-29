@@ -29,6 +29,7 @@ jobs:
         run: python tools/wb_api/fetch_data.py
 
       - name: Commit & push data
+        if: always()  # коммитим то, что скачалось, даже при частичных ошибках
         run: |
           git config user.name  "wb-api-bot"
           git config user.email "wb-api-bot@noreply"
