@@ -115,9 +115,14 @@ def fetch_adv_campaigns():
     data = get(BASE_ADV, '/adv/v1/promotion/count')
     save('adv_campaigns', data)
 
-    # Плоский список id всех кампаний из ответа count.
+    # Для статистики берём только кампании со статусами, у которых есть
+    # открутка: 9 — активна, 11 — пауза. Иначе 1700+ кампаний × лимит
+    # 1 запрос/мин превращают прогон в десятки минут.
+    STAT_STATUSES = {9, 11}
     ids = []
     for grp in (data or {}).get('adverts', []) or []:
+        if grp.get('status') not in STAT_STATUSES:
+            continue
         for adv in grp.get('advert_list', []) or []:
             if 'advertId' in adv:
                 ids.append(adv['advertId'])
@@ -143,18 +148,18 @@ def fetch_adv_details(ids):
 
 def fetch_adv_fullstats(ids):
     """Статистика по кампаниям за 30 дней (показы, клики, CTR, CPC, ДРР, расход).
-    POST /adv/v2/fullstats — тело [{id, dates:[...]}], макс 100 кампаний/запрос,
-    не чаще 1 запроса/мин. Берём окно 30 дней по дням.
+    Актуальный эндпоинт — /adv/v3/fullstats (v2 устарел и отдаёт 404).
+    Тело: [{id, dates:[...]}], макс 100 кампаний/запрос, не чаще 1 запроса/мин.
     """
     if not ids:
-        print('  пропуск adv_fullstats — нет id кампаний')
+        print('  пропуск adv_fullstats — нет активных id кампаний')
         return
     dates = [days_ago(n) for n in range(30, -1, -1)]
     out = []
     for i in range(0, len(ids), 100):
         chunk = ids[i:i + 100]
         payload = [{'id': cid, 'dates': dates} for cid in chunk]
-        part = post(BASE_ADV, '/adv/v2/fullstats', payload)
+        part = post(BASE_ADV, '/adv/v3/fullstats', payload)
         if isinstance(part, list):
             out.extend(part)
         if i + 100 < len(ids):
