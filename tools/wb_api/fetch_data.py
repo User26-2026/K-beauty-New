@@ -177,14 +177,28 @@ def fetch_adv_upd():
 
 def fetch_advertising():
     """Единая задача по рекламе: кампании → детали → статистика → баланс/списания.
-    Вынесено в одну задачу, т.к. detail/fullstats зависят от списка id.
+    Под-запросы независимы: падение одного (напр. detail) не должно блокировать
+    остальные, особенно fullstats со статистикой ДРР/CPC/расхода.
     """
     ids = fetch_adv_campaigns()
     print(f'  кампаний найдено: {len(ids)}')
-    fetch_adv_details(ids)
-    fetch_adv_balance()
-    fetch_adv_upd()
-    fetch_adv_fullstats(ids)  # последним — внутри длинные паузы по лимиту
+    sub_errors = []
+    for label, fn in [
+        ('adv_details',   lambda: fetch_adv_details(ids)),
+        ('adv_balance',   fetch_adv_balance),
+        ('adv_upd',       fetch_adv_upd),
+        ('adv_fullstats', lambda: fetch_adv_fullstats(ids)),  # последним — паузы по лимиту
+    ]:
+        try:
+            fn()
+        except Exception as e:
+            print(f'  err {label}: {e}')
+            sub_errors.append((label, str(e)))
+    if sub_errors:
+        # Сигнализируем наверх, но только если упало вообще всё рекламное.
+        if len(sub_errors) == 4:
+            raise RuntimeError(f'все рекламные под-запросы упали: {sub_errors}')
+        print(f'  реклама: частичные ошибки {[s[0] for s in sub_errors]}')
 
 
 TASKS = [
