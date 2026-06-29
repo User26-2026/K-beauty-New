@@ -1,0 +1,22 @@
+{
+  "fetched_at": "2026-06-29T08:20:37.593245Z",
+  "errors": [
+    [
+      "report_detail",
+      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/reportDetailByPeriod?dateFrom=2026-05-30&dateTo=2026-06-29&rrdid=0"
+    ],
+    [
+      "incomes",
+      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/incomes?dateFrom=2026-03-31"
+    ],
+    [
+      "advertising",
+      "404 Client Error: Not Found for url: https://advert-api.wildberries.ru/adv/v1/promotion/adverts"
+    ]
+  ],
+  "tasks_ok": [
+    "sales",
+    "stocks",
+    "orders"
+  ]
+}
