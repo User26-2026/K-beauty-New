@@ -197,20 +197,29 @@ def fetch_adv_words(camps):
     if not camps:
         print('  пропуск adv_words — нет активных кампаний')
         return
+    # Маршрутизация по типу неоднозначна (тип 9 «Аукцион» != тип 8 «авто»),
+    # поэтому по каждой кампании пробуем оба эндпоинта и берём тот, что ответил.
+    endpoints = ['/adv/v1/stat/words', '/adv/v2/auto/stat-words']
     out = []
+    ep_404 = {ep: 0 for ep in endpoints}
     for c in camps:
         cid, ctype = c['id'], c.get('type')
-        try:
-            if ctype == 6:
-                data = get(BASE_ADV, '/adv/v1/stat/words', params={'id': cid})
-            else:  # 8, 9 и прочие авто/АРК
-                data = get(BASE_ADV, '/adv/v2/auto/stat-words', params={'id': cid})
-            if data:
-                out.append({'advertId': cid, 'type': ctype, 'words': data})
-        except Exception as e:
-            # одиночная кампания не должна валить всю выгрузку ключей
-            print(f'    words err id={cid} type={ctype}: {e}')
+        # сначала пробуем эндпоинт, более подходящий типу, потом второй
+        order = endpoints if ctype in (6, 9) else endpoints[::-1]
+        for ep in order:
+            try:
+                data = get(BASE_ADV, ep, params={'id': cid})
+                if data:
+                    out.append({'advertId': cid, 'type': ctype,
+                                'endpoint': ep, 'words': data})
+                    break
+            except Exception as e:
+                if '404' in str(e):
+                    ep_404[ep] += 1
+                else:
+                    print(f'    words err id={cid} type={ctype} {ep}: {e}')
         time.sleep(0.6)  # бережём лимиты stat-эндпоинтов
+    print(f'    words: собрано {len(out)} кампаний, 404 по эндпоинтам {ep_404}')
     save('adv_words', out)
 
 
