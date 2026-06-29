@@ -118,15 +118,19 @@ def fetch_adv_campaigns():
     # Для статистики берём только кампании со статусами, у которых есть
     # открутка: 9 — активна, 11 — пауза. Иначе 1700+ кампаний × лимит
     # 1 запрос/мин превращают прогон в десятки минут.
+    # Возвращаем список словарей {id, type, status} — тип нужен, чтобы
+    # выбрать правильный эндпоинт статистики по ключам.
     STAT_STATUSES = {9, 11}
-    ids = []
+    camps = []
     for grp in (data or {}).get('adverts', []) or []:
         if grp.get('status') not in STAT_STATUSES:
             continue
         for adv in grp.get('advert_list', []) or []:
             if 'advertId' in adv:
-                ids.append(adv['advertId'])
-    return ids
+                camps.append({'id': adv['advertId'],
+                              'type': grp.get('type'),
+                              'status': grp.get('status')})
+    return camps
 
 
 def fetch_adv_details(ids):
@@ -148,21 +152,32 @@ def fetch_adv_details(ids):
 
 def fetch_adv_fullstats(ids):
     """Статистика по кампаниям за 30 дней (показы, клики, CTR, CPC, ДРР, расход).
-    Актуальный эндпоинт — GET /adv/v3/fullstats (v2 POST устарел → 404,
-    v3 принимает только GET → POST даёт 405). Параметры: ids (через запятую,
-    макс 100), from/to (даты). Не чаще 1 запроса/мин.
+    GET /adv/v3/fullstats (v2 POST → 404, v3 POST → 405, значит только GET).
+    Перебираем варианты имён параметров дат: пустой ответ при первой паре
+    означает, что WB не распознал параметры — пробуем следующую пару.
     """
     if not ids:
         print('  пропуск adv_fullstats — нет активных id кампаний')
         return
     date_from = days_ago(30)
     date_to = datetime.date.today().isoformat()
+    # Разные поколения v3 ждут разные имена окна дат — пробуем по очереди.
+    param_variants = [
+        {'from': date_from, 'to': date_to},
+        {'beginDate': date_from, 'endDate': date_to},
+        {'dateFrom': date_from, 'dateTo': date_to},
+        {},  # только ids — некоторые версии отдают агрегат за всё время
+    ]
     out = []
     for i in range(0, len(ids), 100):
         chunk = ids[i:i + 100]
-        part = get(BASE_ADV, '/adv/v3/fullstats',
-                   params={'ids': ','.join(str(c) for c in chunk),
-                           'from': date_from, 'to': date_to})
+        base = {'ids': ','.join(str(c) for c in chunk)}
+        part = None
+        for extra in param_variants:
+            part = get(BASE_ADV, '/adv/v3/fullstats', params={**base, **extra})
+            if part:  # непустой ответ — параметры подошли
+                print(f'    fullstats params ok: {list(extra) or "ids-only"}')
+                break
         if isinstance(part, list):
             out.extend(part)
         elif part:
@@ -170,6 +185,33 @@ def fetch_adv_fullstats(ids):
         if i + 100 < len(ids):
             time.sleep(60)  # жёсткий лимит 1 запрос/мин
     save('adv_fullstats', out)
+
+
+def fetch_adv_words(camps):
+    """Статистика по ключевым фразам активных кампаний.
+    Поиск (type 6): GET /adv/v1/stat/words?id=<advertId>.
+    Авто/АРК (type 8, 9): GET /adv/v2/auto/stat-words?id=<advertId>.
+    Сохраняем по каждой кампании сырой ответ — там фразы/кластеры с показами,
+    кликами, CTR, расходом, заказами для решения «отключить / ± ставка».
+    """
+    if not camps:
+        print('  пропуск adv_words — нет активных кампаний')
+        return
+    out = []
+    for c in camps:
+        cid, ctype = c['id'], c.get('type')
+        try:
+            if ctype == 6:
+                data = get(BASE_ADV, '/adv/v1/stat/words', params={'id': cid})
+            else:  # 8, 9 и прочие авто/АРК
+                data = get(BASE_ADV, '/adv/v2/auto/stat-words', params={'id': cid})
+            if data:
+                out.append({'advertId': cid, 'type': ctype, 'words': data})
+        except Exception as e:
+            # одиночная кампания не должна валить всю выгрузку ключей
+            print(f'    words err id={cid} type={ctype}: {e}')
+        time.sleep(0.6)  # бережём лимиты stat-эндпоинтов
+    save('adv_words', out)
 
 
 def fetch_adv_balance():
@@ -190,15 +232,18 @@ def fetch_advertising():
     Под-запросы независимы: падение одного (напр. detail) не должно блокировать
     остальные, особенно fullstats со статистикой ДРР/CPC/расхода.
     """
-    ids = fetch_adv_campaigns()
-    print(f'  кампаний найдено: {len(ids)}')
+    camps = fetch_adv_campaigns()
+    ids = [c['id'] for c in camps]
+    print(f'  активных кампаний: {len(ids)}')
     sub_errors = []
-    for label, fn in [
+    sub_tasks = [
         ('adv_details',   lambda: fetch_adv_details(ids)),
         ('adv_balance',   fetch_adv_balance),
         ('adv_upd',       fetch_adv_upd),
+        ('adv_words',     lambda: fetch_adv_words(camps)),     # ключи по кампаниям
         ('adv_fullstats', lambda: fetch_adv_fullstats(ids)),  # последним — паузы по лимиту
-    ]:
+    ]
+    for label, fn in sub_tasks:
         try:
             fn()
         except Exception as e:
@@ -206,7 +251,7 @@ def fetch_advertising():
             sub_errors.append((label, str(e)))
     if sub_errors:
         # Сигнализируем наверх, но только если упало вообще всё рекламное.
-        if len(sub_errors) == 4:
+        if len(sub_errors) == len(sub_tasks):
             raise RuntimeError(f'все рекламные под-запросы упали: {sub_errors}')
         print(f'  реклама: частичные ошибки {[s[0] for s in sub_errors]}')
 
