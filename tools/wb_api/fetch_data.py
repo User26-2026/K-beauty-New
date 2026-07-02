@@ -67,9 +67,9 @@ def days_ago(n):
 
 
 def fetch_sales():
-    """Продажи и возвраты за 90 дней."""
+    """Продажи и возвраты за 60 дней (файл <50MB, хватает на недельные/месячные срезы)."""
     data = get(BASE_STAT, '/api/v1/supplier/sales',
-               params={'dateFrom': days_ago(90), 'flag': 0})
+               params={'dateFrom': days_ago(60), 'flag': 0})
     save('sales', data)
 
 
@@ -81,9 +81,9 @@ def fetch_stocks():
 
 
 def fetch_orders():
-    """Заказы за 90 дней (Statistics API)."""
+    """Заказы за 60 дней (Statistics API). Файл <50MB, покрывает недельные графики."""
     data = get(BASE_STAT, '/api/v1/supplier/orders',
-               params={'dateFrom': days_ago(90), 'flag': 0})
+               params={'dateFrom': days_ago(60), 'flag': 0})
     save('orders', data)
 
 
