@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ежедневные заказы — Celimax Dual Barrier Toner (868516027)</title>
+<style>
+  .viz-root {
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #8a8983;
+    --grid:           #ecec06 0;
+    --grid-line:      #e9e9e4;
+    --series-1:       #2a78d6;
+    --series-1-soft:  #cde2fb;
+    --warn:           #eb6834;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #8f8e85;
+      --grid-line:      #302f2c;
+      --series-1:       #3987e5;
+      --series-1-soft:  #17324f;
+      --warn:           #d95926;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background: var(--surface-1); }
+  .viz-root {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    max-width: 760px; margin: 0 auto; padding: 28px 24px 32px;
+  }
+  .title { font-size: 19px; font-weight: 650; margin: 0 0 2px; }
+  .subtitle { font-size: 13px; color: var(--text-secondary); margin: 0 0 4px; }
+  .note { font-size: 12px; color: var(--text-muted); margin: 0 0 20px; }
+  .chart { position: relative; }
+  svg { display:block; width:100%; height:auto; overflow: visible; }
+  .grid line { stroke: var(--grid-line); stroke-width:1; }
+  .axis-label { fill: var(--text-muted); font-size: 11px; }
+  .day-label { fill: var(--text-secondary); font-size: 12px; text-anchor: middle; }
+  .val-label { fill: var(--text-primary); font-size: 12px; font-weight: 600; text-anchor: middle; }
+  .bar { fill: var(--series-1); transition: opacity .12s; cursor: default; }
+  .bar.partial { fill: var(--series-1-soft); stroke: var(--series-1); stroke-width:1.5; stroke-dasharray:3 2; }
+  .bar:hover { opacity: .82; }
+  .tip {
+    position:absolute; pointer-events:none; opacity:0; transform: translate(-50%,-100%);
+    background: var(--text-primary); color: var(--surface-1);
+    padding: 6px 9px; border-radius: 6px; font-size: 12px; white-space:nowrap;
+    transition: opacity .1s; z-index:5;
+  }
+  .legend-row { display:flex; gap:16px; margin-top:14px; font-size:12px; color: var(--text-secondary); }
+  .legend-row .k { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  table { border-collapse: collapse; margin-top:18px; font-size:12px; width:100%; }
+  th, td { text-align:right; padding:4px 8px; border-bottom:1px solid var(--grid-line); color: var(--text-secondary); }
+  th:first-child, td:first-child { text-align:left; }
+  caption { text-align:left; font-size:12px; color: var(--text-muted); padding-bottom:6px; }
+</style>
+</head>
+<body>
+<div class="viz-root" data-palette="#2a78d6">
+  <p class="title">Ежедневные заказы — Celimax Dual Barrier Toner (868516027)</p>
+  <p class="subtitle">24–30 июня 2026 · штук в день · источник: WB API (orders)</p>
+  <p class="note">30 июня — неполный день (снимок API сделан утром). Среднее за 24–29 июня: <b>53 шт/день</b>.</p>
+
+  <div class="chart" id="chart"></div>
+
+  <div class="legend-row">
+    <span class="k"><span class="sw" style="background:var(--series-1)"></span>заказы, шт</span>
+    <span class="k"><span class="sw" style="background:var(--series-1-soft);border:1.5px dashed var(--series-1)"></span>неполный день (30 июня)</span>
+  </div>
+
+  <table>
+    <caption>Данные</caption>
+    <thead><tr><th>Дата</th><th>Заказы, шт</th></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+const data = [
+  {d:"24 июн", v:56, partial:false},
+  {d:"25 июн", v:57, partial:false},
+  {d:"26 июн", v:60, partial:false},
+  {d:"27 июн", v:43, partial:false},
+  {d:"28 июн", v:52, partial:false},
+  {d:"29 июн", v:49, partial:false},
+  {d:"30 июн", v:17, partial:true},
+];
+
+const W=700, H=300, m={t:24,r:12,b:40,l:40};
+const iw=W-m.l-m.r, ih=H-m.t-m.b;
+const maxV=70;
+const x = i => m.l + (i+0.5)*(iw/data.length);
+const bw = (iw/data.length)*0.56;
+const y = v => m.t + ih - (v/maxV)*ih;
+
+let ticks=[0,20,40,60];
+let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ежедневные заказы 868516027, 24-30 июня 2026">`;
+svg+=`<g class="grid">`;
+ticks.forEach(t=>{svg+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(t)}" y2="${y(t)}"/>`;
+  svg+=`<text class="axis-label" x="${m.l-8}" y="${y(t)+4}" text-anchor="end">${t}</text>`;});
+svg+=`</g>`;
+data.forEach((row,i)=>{
+  const bx=x(i)-bw/2, by=y(row.v), bh=m.t+ih-by;
+  const r=Math.min(4,bw/2);
+  // rounded top corners (data-end), square baseline
+  svg+=`<path class="bar ${row.partial?'partial':''}" data-i="${i}"
+    d="M${bx},${by+ (bh>r?0:0)}
+       M${bx},${by+r} Q${bx},${by} ${bx+r},${by}
+       L${bx+bw-r},${by} Q${bx+bw},${by} ${bx+bw},${by+r}
+       L${bx+bw},${m.t+ih} L${bx},${m.t+ih} Z"/>`;
+  svg+=`<text class="val-label" x="${x(i)}" y="${by-6}">${row.v}</text>`;
+  svg+=`<text class="day-label" x="${x(i)}" y="${m.t+ih+20}">${row.d}</text>`;
+});
+svg+=`</svg>`;
+document.getElementById('chart').innerHTML=svg+`<div class="tip" id="tip"></div>`;
+
+const tip=document.getElementById('tip'), chart=document.getElementById('chart');
+chart.querySelectorAll('.bar').forEach(b=>{
+  b.addEventListener('mousemove',e=>{
+    const i=+b.dataset.i, row=data[i];
+    tip.innerHTML=`<b>${row.v} шт</b> · ${row.d}${row.partial?' (неполный)':''}`;
+    const r=chart.getBoundingClientRect();
+    tip.style.left=(e.clientX-r.left)+'px';
+    tip.style.top=(e.clientY-r.top-8)+'px';
+    tip.style.opacity=1;
+  });
+  b.addEventListener('mouseleave',()=>tip.style.opacity=0);
+});
+
+document.getElementById('tbody').innerHTML=data.map(r=>
+  `<tr><td>${r.d}${r.partial?' *':''}</td><td>${r.v}</td></tr>`).join('');
+</script>
+</body>
+</html>
