@@ -66,14 +66,14 @@
 <body>
 <div class="viz-root" data-palette="#2a78d6">
   <p class="title">Ежедневные заказы — Celimax Dual Barrier Toner (868516027)</p>
-  <p class="subtitle">24–30 июня 2026 · штук в день · источник: WB API (orders)</p>
-  <p class="note">30 июня — неполный день (снимок API сделан утром). Среднее за 24–29 июня: <b>53 шт/день</b>.</p>
+  <p class="subtitle">25 июня – 1 июля 2026 · штук в день · источник: WB API (orders)</p>
+  <p class="note">1 июля — неполный день (снимок сделан днём). Среднее за 25–30 июня: <b>50 шт/день</b>.</p>
 
   <div class="chart" id="chart"></div>
 
   <div class="legend-row">
     <span class="k"><span class="sw" style="background:var(--series-1)"></span>заказы, шт</span>
-    <span class="k"><span class="sw" style="background:var(--series-1-soft);border:1.5px dashed var(--series-1)"></span>неполный день (30 июня)</span>
+    <span class="k"><span class="sw" style="background:var(--series-1-soft);border:1.5px dashed var(--series-1)"></span>неполный день (1 июля)</span>
   </div>
 
   <table>
@@ -85,13 +85,13 @@
 
 <script>
 const data = [
-  {d:"24 июн", v:56, partial:false},
   {d:"25 июн", v:57, partial:false},
-  {d:"26 июн", v:60, partial:false},
+  {d:"26 июн", v:61, partial:false},
   {d:"27 июн", v:43, partial:false},
-  {d:"28 июн", v:52, partial:false},
+  {d:"28 июн", v:53, partial:false},
   {d:"29 июн", v:49, partial:false},
-  {d:"30 июн", v:17, partial:true},
+  {d:"30 июн", v:38, partial:false},
+  {d:"1 июл",  v:22, partial:true},
 ];
 
 const W=700, H=300, m={t:24,r:12,b:40,l:40};
@@ -102,7 +102,7 @@ const bw = (iw/data.length)*0.56;
 const y = v => m.t + ih - (v/maxV)*ih;
 
 let ticks=[0,20,40,60];
-let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ежедневные заказы 868516027, 24-30 июня 2026">`;
+let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ежедневные заказы 868516027, 25 июня – 1 июля 2026">`;
 svg+=`<g class="grid">`;
 ticks.forEach(t=>{svg+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(t)}" y2="${y(t)}"/>`;
   svg+=`<text class="axis-label" x="${m.l-8}" y="${y(t)+4}" text-anchor="end">${t}</text>`;});
