@@ -84,4 +84,5 @@ TDEE ≈ 2191 × 1.35 ≈ 2960 ккал
 - `nutrition/meal_plan.md` — план питания на месяц (1800 ккал), 15 дней + список продуктов
 - `nutrition/cooking_instructions.md` — как готовить контейнеры на неделю
 - `nutrition/supplements.md` — принимаемые БАДы и заметки по единственной почке
+- `nutrition/staple_products.md` — справочник постоянных продуктов (для быстрого подсчёта)
 - `nutrition/README.md` — этот план
