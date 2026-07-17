@@ -53,25 +53,20 @@ CONFIG = {
          "rub_per_usd": 82},
     ],
 
-    # Ручные выгрузки остатков: СКЛАД (все линейки) + МАРКЕТЫ там, где нет
-    # живого отчёта (Китай).
+    # Ручные выгрузки остатков. Колонки ищем по ЗАГОЛОВКУ (файлы еженедельно
+    # меняют раскладку), берём готовые суммы «СКЛАД» и «Маркеты» из блока
+    # «Сумма остатков». Реальные SKU-строки = где заполнена себестоимость.
     "stock_files": [
         {
             "label": "Корея (косметика)",
             "path": STOCK_DIR / "ostatki_korea_full.xlsx",
             "sheet": None,
-            "cost_col": 20, "sklad_col": 21,
-            "wb_cols": [22, 23, 24], "ozon_cols": [26, 27],
-            "art_cols": [1, 2, 3, 4],
             "use_marketplace": False,   # маркеты Кореи берём из отчёта ВБ по API
         },
         {
             "label": "Китай (товары)",
             "path": STOCK_DIR / "ostatki_china_full.xlsx",
             "sheet": None,
-            "cost_col": 10, "sklad_col": 14,
-            "wb_cols": [15, 16, 17], "ozon_cols": [19, 20],
-            "art_cols": [1, 2, 3],
             "use_marketplace": True,    # у Китая живого отчёта нет
         },
     ],
@@ -85,6 +80,8 @@ CONFIG = {
         "art_col": 0, "stock_col": 7, "unit_cost_col": 18, "cost_sum_col": 27,
         "cabinet_names": ("Коротич", "КРОНА", "Скляров"),
         "cost_source": STOCK_DIR / "ostatki_korea_full.xlsx",
+        # артикулы ВБ в таблице-источнике: Коротич/Скляров/Крона
+        "cost_source_art_cols": (2, 3, 4),
     },
 }
 
@@ -180,31 +177,54 @@ def _pick_sheet(wb, requested):
     return wb[wb.sheetnames[-1]]
 
 
+def _find_col(rows, match, maxrow=6):
+    """Индекс колонки, чей заголовок в первых строках проходит проверку match()."""
+    for r in rows[:maxrow]:
+        for i, v in enumerate(r):
+            if v is not None and match(str(v).strip()):
+                return i
+    return None
+
+
+def _cost_col(rows):
+    # «Себестоимость по последнему приходу» (Корея) или «Себестоимость» (Китай),
+    # но не «Себестоимость средняя карго».
+    return _find_col(rows, lambda s: s.lower().startswith("себестоимость")
+                     and "карго" not in s.lower() and "средн" not in s.lower())
+
+
 def _analyze_stock(cfg):
-    ws = _pick_sheet(openpyxl.load_workbook(cfg["path"], read_only=True, data_only=True),
-                     cfg["sheet"])
+    ws = _pick_sheet(openpyxl.load_workbook(cfg["path"], data_only=True), cfg["sheet"])
+    rows = list(ws.iter_rows(values_only=True))
+    cc = _cost_col(rows)
+    sc = _find_col(rows, lambda s: s.upper() == "СКЛАД")
+    mc = _find_col(rows, lambda s: s.upper() == "МАРКЕТЫ")
     sklad = mkt = 0.0
-    for row in ws.iter_rows(values_only=True):
-        def g(c):
-            return row[c] if c < len(row) else None
-        cost = num(g(cfg["cost_col"]))
-        if cost <= 0 or not any(num(g(c)) > 0 for c in cfg["art_cols"]):
+    for r in rows:
+        # реальная SKU-строка = заполнена себестоимость (подытоги/заголовки без неё)
+        if cc is None or num(r[cc] if cc < len(r) else None) <= 0:
             continue
-        sklad += cost * num(g(cfg["sklad_col"]))
-        mkt += cost * sum(num(g(c)) for c in cfg["wb_cols"] + cfg["ozon_cols"])
+        if sc is not None and sc < len(r):
+            sklad += num(r[sc])
+        if mc is not None and mc < len(r):
+            mkt += num(r[mc])
     return {"label": cfg["label"], "sheet": ws.title, "sklad": sklad,
             "mkt": mkt, "use_marketplace": cfg["use_marketplace"]}
 
 
-def _art_cost_map(path, cost_col=20, art_cols=(2, 3, 4)):
+def _art_cost_map(path, art_cols=(2, 3, 4)):
     ws = _pick_sheet(openpyxl.load_workbook(path, data_only=True), None)
+    rows = list(ws.iter_rows(values_only=True))
+    cc = _cost_col(rows)
     m = {}
-    for row in ws.iter_rows(values_only=True):
-        cost = num(row[cost_col]) if cost_col < len(row) else 0.0
+    if cc is None:
+        return m
+    for r in rows:
+        cost = num(r[cc]) if cc < len(r) else 0.0
         if cost <= 0:
             continue
         for ac in art_cols:
-            a = row[ac] if ac < len(row) else None
+            a = r[ac] if ac < len(r) else None
             if a is not None and is_num(a):
                 m[str(int(float(a)))] = cost
     return m
@@ -213,7 +233,7 @@ def _art_cost_map(path, cost_col=20, art_cols=(2, 3, 4)):
 def _analyze_wb_api(cfg):
     import xlrd
     sh = xlrd.open_workbook(cfg["path"]).sheet_by_index(0)
-    cost_map = _art_cost_map(cfg["cost_source"])
+    cost_map = _art_cost_map(cfg["cost_source"], cfg.get("cost_source_art_cols", (2, 3, 4)))
     val = units_missing = 0.0
     for r in range(sh.nrows):
         a = sh.cell_value(r, cfg["art_col"])
