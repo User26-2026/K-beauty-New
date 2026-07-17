@@ -3,25 +3,19 @@
 Считает сколько денег заморожено в товаре на всех стадиях и сравнивает с лимитом,
 чтобы не допускать перевложения:
 
-    Всего в товаре = Заказано за границей (в пути) + Склад + Товар на маркетах
+    Всего в товаре = Заказано за границей (оплачено) + Склад + Товар на маркетах
 
-Источники:
-  - Заказано за границей   -> задаётся вручную в CONFIG (валюта + курсы).
-  - Склад                  -> из ручных выгрузок остатков (data/stock_costs),
-                              sum(себестоимость * остаток на складе) по SKU.
-  - Товар на маркетах (ВБ) -> для косметики из ЖИВОГО отчёта ВБ по API
-                              (колонка "Сумма остатка в себестоимости API").
-                              Где в отчёте себестоимость пустая (кабинет
-                              КРОНА), подставляем её по Артикулу ВБ из ручной
-                              таблицы. Кабинет Скляров не работает — не учитываем.
-                              Для Китая маркеты берём из ручной выгрузки.
-  - Свободный кэш и баланс WB -> задаются вручную в CONFIG.
+Основной источник — ручной срез в CONFIG["snapshot"] (владелец обновляет цифры
+по банкам / складу / ВБ). Выгрузки остатков и отчёт ВБ по API используются как
+ПЕРЕПРОВЕРКА (команда --crosscheck): считают склад и стоимость товара на ВБ из
+файлов и показывают расхождение с ручным срезом.
 
 Запуск:
-    python tools/monitor_investment.py                 # печать дашборда
-    python tools/monitor_investment.py --report         # + запись отчёта в outputs/
+    python tools/monitor_investment.py                 # дашборд по ручному срезу
+    python tools/monitor_investment.py --report         # + запись в outputs/
+    python tools/monitor_investment.py --crosscheck     # сверка с файлами остатков
 
-Зависимости: openpyxl (xlsx), xlrd (для .xls отчёта ВБ).
+Зависимости: openpyxl (xlsx), xlrd (для .xls отчёта ВБ, только для --crosscheck).
 """
 from __future__ import annotations
 
@@ -35,24 +29,32 @@ ROOT = Path(__file__).resolve().parents[1]
 STOCK_DIR = ROOT / "data/stock_costs"
 OUT_DIR = ROOT / "outputs"
 
-# --- Параметры, которые задаёт владелец (обновляй руками) -------------------
+# --- Актуальный срез. Обновляй эти цифры руками. ----------------------------
 
 CONFIG = {
-    # Заказано за границей: оплачено поставщику, товар ещё в пути.
+    "snapshot": {
+        "abroad_paid": 26_000_000,       # заказано за границей и ОПЛАЧЕНО, руб
+        "sklad": 61_000_000,             # товар на складе (себестоимость), руб
+        "marketplace_goods": 13_600_000,  # товар на маркетах (себестоимость), руб
+        "wb_balance": 14_000_000,        # деньги на маркетах (баланс ВБ), руб
+        "wb_withdraw_pct": 0.30,         # вывод с ВБ в понедельник, доля
+        "cash_bank": 12_000_000,         # остатки на счетах юр лиц, руб
+        "limit": 100_000_000,           # лимит вложений в товар, руб
+        "warn_ratio": 0.80,              # жёлтая зона: >=80% лимита
+    },
+
+    # --- Источники для перепроверки (--crosscheck) --------------------------
+
+    # Заказано за границей — для пересчёта валют в рубли (справочно).
     "abroad_orders": [
         {"label": "Корея (вон)", "amount": 790_000_000, "currency": "KRW",
          "krw_per_usd": 1500, "rub_per_usd": 82},
         {"label": "Китай (USD)", "amount": 67_000, "currency": "USD",
          "rub_per_usd": 82},
     ],
-    "cash_bank": 14_000_000,          # свободный кэш в банках, руб
-    "wb_balance": 15_000_000,         # остаток на WB, руб (заморожен частично)
-    "wb_withdraw_pct": 0.30,          # можно выводить в понедельник, доля
-    "limit": 100_000_000,            # лимит вложений в товар, руб
-    "warn_ratio": 0.80,               # жёлтая зона: >=80% лимита
 
-    # Ручные выгрузки остатков: берём отсюда СКЛАД (по всем линейкам) и
-    # МАРКЕТЫ по тем линейкам, где нет живого отчёта (Китай).
+    # Ручные выгрузки остатков: СКЛАД (все линейки) + МАРКЕТЫ там, где нет
+    # живого отчёта (Китай).
     "stock_files": [
         {
             "label": "Корея (косметика)",
@@ -61,7 +63,6 @@ CONFIG = {
             "cost_col": 20, "sklad_col": 21,
             "wb_cols": [22, 23, 24], "ozon_cols": [26, 27],
             "art_cols": [1, 2, 3, 4],
-            "wb_art_cols": [2, 3, 4],   # Артикул WB (Коротич/Скляров/Крона)
             "use_marketplace": False,   # маркеты Кореи берём из отчёта ВБ по API
         },
         {
@@ -71,26 +72,24 @@ CONFIG = {
             "cost_col": 10, "sklad_col": 14,
             "wb_cols": [15, 16, 17], "ozon_cols": [19, 20],
             "art_cols": [1, 2, 3],
-            "wb_art_cols": [1, 2, 3],
             "use_marketplace": True,    # у Китая живого отчёта нет
         },
     ],
 
-    # Живой отчёт ВБ по API (косметика). col27 = "Сумма остатка в
-    # себестоимости API". Пропуски себестоимости заполняем по Артикулу ВБ из
-    # соответствующей ручной таблицы (cost_source).
+    # Живой отчёт ВБ по API (косметика). col27 = "Сумма остатка в себестоимости
+    # API". Пропуски себестоимости (кабинет КРОНА) заполняем по Артикулу ВБ из
+    # ручной таблицы. Кабинет Скляров не работает — не учитываем.
     "wb_api": {
         "label": "ВБ косметика (API)",
         "path": STOCK_DIR / "wb_api_report.xls",
         "art_col": 0, "stock_col": 7, "unit_cost_col": 18, "cost_sum_col": 27,
         "cabinet_names": ("Коротич", "КРОНА", "Скляров"),
-        "cost_source": STOCK_DIR / "ostatki_korea_full.xlsx",  # для пропусков
+        "cost_source": STOCK_DIR / "ostatki_korea_full.xlsx",
     },
 }
 
 
 def num(v) -> float:
-    """Безопасный парсинг числа: терпит пробелы, %, запятую как разделитель."""
     if v is None:
         return 0.0
     if isinstance(v, (int, float)):
@@ -110,7 +109,69 @@ def is_num(v) -> bool:
         return False
 
 
-def pick_sheet(wb, requested):
+def rub(x: float) -> str:
+    return f"{x:,.0f}".replace(",", " ") + " ₽"
+
+
+# --- Дашборд по ручному срезу ------------------------------------------------
+
+def build(snap: dict) -> dict:
+    abroad = snap["abroad_paid"]
+    sklad = snap["sklad"]
+    mkt = snap["marketplace_goods"]
+    total = abroad + sklad + mkt
+
+    wb_liquid = snap["wb_balance"] * snap["wb_withdraw_pct"]
+    cash_live = snap["cash_bank"] + wb_liquid
+
+    limit = snap["limit"]
+    free = limit - total
+    if total > limit:
+        flag = "🔴 СТОП — перевложение"
+    elif total >= limit * snap["warn_ratio"]:
+        flag = "🟡 Осторожно — запас < 20%"
+    else:
+        flag = "🟢 ОК"
+
+    return {
+        "abroad": abroad, "sklad": sklad, "mkt": mkt, "total": total,
+        "limit": limit, "free": free, "flag": flag,
+        "cash_bank": snap["cash_bank"], "wb_balance": snap["wb_balance"],
+        "wb_liquid": wb_liquid, "cash_live": cash_live,
+        "coverage": cash_live / total if total else 0.0,
+    }
+
+
+def render(r: dict) -> str:
+    L = []
+    a = L.append
+    a(f"# Монитор вложений в товар — {dt.date.today().isoformat()}\n")
+    a(f"## {r['flag']}\n")
+    a("## Всего в товаре\n")
+    a("| Стадия | Сумма |")
+    a("|---|---|")
+    a(f"| 🌍 Заказано за границей (оплачено) | {rub(r['abroad'])} |")
+    a(f"| 📦 На складе | {rub(r['sklad'])} |")
+    a(f"| 🛒 На маркетах (товар) | {rub(r['mkt'])} |")
+    a(f"| **💰 ВСЕГО В ТОВАРЕ** | **{rub(r['total'])}** |")
+    a(f"| 🎯 Лимит | {rub(r['limit'])} |")
+    label = "Свободный лимит" if r["free"] >= 0 else "Превышение лимита"
+    a(f"| **{label}** | **{rub(r['free'])}** |\n")
+
+    a("## Свободные деньги\n")
+    a("| Источник | Сумма |")
+    a("|---|---|")
+    a(f"| Счета юр лиц | {rub(r['cash_bank'])} |")
+    a(f"| Деньги на ВБ (баланс) | {rub(r['wb_balance'])} |")
+    a(f"| — из них вывод в понедельник (30%) | {rub(r['wb_liquid'])} |")
+    a(f"| **Живой кэш (счета + вывод с ВБ)** | **{rub(r['cash_live'])}** |")
+    a(f"| Покрытие товара живым кэшом | {r['coverage']*100:.0f}% |\n")
+    return "\n".join(L)
+
+
+# --- Перепроверка из файлов --------------------------------------------------
+
+def _pick_sheet(wb, requested):
     if requested:
         return wb[requested]
     for name in reversed(wb.sheetnames):
@@ -119,36 +180,24 @@ def pick_sheet(wb, requested):
     return wb[wb.sheetnames[-1]]
 
 
-def analyze_stock(cfg: dict, sheet_override: str | None):
-    wb = openpyxl.load_workbook(cfg["path"], read_only=True, data_only=True)
-    ws = pick_sheet(wb, sheet_override or cfg["sheet"])
-    sklad_val = mkt_val = 0.0
-    n_sklad = n_mkt = 0
+def _analyze_stock(cfg):
+    ws = _pick_sheet(openpyxl.load_workbook(cfg["path"], read_only=True, data_only=True),
+                     cfg["sheet"])
+    sklad = mkt = 0.0
     for row in ws.iter_rows(values_only=True):
         def g(c):
             return row[c] if c < len(row) else None
         cost = num(g(cfg["cost_col"]))
         if cost <= 0 or not any(num(g(c)) > 0 for c in cfg["art_cols"]):
             continue
-        sk = num(g(cfg["sklad_col"]))
-        mkt = sum(num(g(c)) for c in cfg["wb_cols"] + cfg["ozon_cols"])
-        sklad_val += cost * sk
-        mkt_val += cost * mkt
-        if sk > 0:
-            n_sklad += 1
-        if mkt > 0:
-            n_mkt += 1
-    return {
-        "label": cfg["label"], "sheet": ws.title,
-        "sklad": sklad_val, "mkt": mkt_val,
-        "n_sklad": n_sklad, "n_mkt": n_mkt,
-        "use_marketplace": cfg["use_marketplace"],
-    }
+        sklad += cost * num(g(cfg["sklad_col"]))
+        mkt += cost * sum(num(g(c)) for c in cfg["wb_cols"] + cfg["ozon_cols"])
+    return {"label": cfg["label"], "sheet": ws.title, "sklad": sklad,
+            "mkt": mkt, "use_marketplace": cfg["use_marketplace"]}
 
 
-def build_art_cost_map(path: Path, cost_col=20, art_cols=(2, 3, 4)) -> dict:
-    """Артикул ВБ -> себестоимость из ручной таблицы (для заполнения пропусков)."""
-    ws = pick_sheet(openpyxl.load_workbook(path, data_only=True), None)
+def _art_cost_map(path, cost_col=20, art_cols=(2, 3, 4)):
+    ws = _pick_sheet(openpyxl.load_workbook(path, data_only=True), None)
     m = {}
     for row in ws.iter_rows(values_only=True):
         cost = num(row[cost_col]) if cost_col < len(row) else 0.0
@@ -161,134 +210,71 @@ def build_art_cost_map(path: Path, cost_col=20, art_cols=(2, 3, 4)) -> dict:
     return m
 
 
-def analyze_wb_api(cfg: dict) -> dict:
-    """Стоимость остатка на ВБ из живого отчёта, с заполнением пропусков цены."""
-    import xlrd  # локальный импорт: нужен только для .xls отчёта ВБ
+def _analyze_wb_api(cfg):
+    import xlrd
     sh = xlrd.open_workbook(cfg["path"]).sheet_by_index(0)
-    cost_map = build_art_cost_map(cfg["cost_source"])
-    val = 0.0
-    units_total = units_missing = 0.0
+    cost_map = _art_cost_map(cfg["cost_source"])
+    val = units_missing = 0.0
     for r in range(sh.nrows):
         a = sh.cell_value(r, cfg["art_col"])
-        # строка-заголовок кабинета -> пропускаем
         if isinstance(a, str) and a.strip() in cfg["cabinet_names"]:
             continue
         if not (is_num(a) and str(a).strip()):
             continue
         stock = num(sh.cell_value(r, cfg["stock_col"]))
         unit_cost = num(sh.cell_value(r, cfg["unit_cost_col"]))
-        cost_sum = num(sh.cell_value(r, cfg["cost_sum_col"]))
-        units_total += stock
         if unit_cost > 0:
-            val += cost_sum
+            val += num(sh.cell_value(r, cfg["cost_sum_col"]))
         else:
             c = cost_map.get(str(int(float(a))))
             if c:
                 val += c * stock
             else:
                 units_missing += stock
-    return {"label": cfg["label"], "mkt": val,
-            "units_total": units_total, "units_missing": units_missing}
+    return {"mkt": val, "units_missing": units_missing}
 
 
-def order_to_rub(o: dict) -> float:
+def _order_to_rub(o):
     if o["currency"] == "USD":
         return o["amount"] * o["rub_per_usd"]
     if o["currency"] == "KRW":
         return o["amount"] / o["krw_per_usd"] * o["rub_per_usd"]
-    raise ValueError(f"неизвестная валюта {o['currency']}")
+    raise ValueError(o["currency"])
 
 
-def rub(x: float) -> str:
-    return f"{x:,.0f}".replace(",", " ") + " ₽"
-
-
-def build(cfg: dict) -> dict:
-    stocks = [analyze_stock(sf, None) for sf in cfg["stock_files"]]
-    wb_api = analyze_wb_api(cfg["wb_api"])
-
-    abroad = sum(order_to_rub(o) for o in cfg["abroad_orders"])
-    sklad = sum(s["sklad"] for s in stocks)
-    mkt = wb_api["mkt"] + sum(s["mkt"] for s in stocks if s["use_marketplace"])
-    total = abroad + sklad + mkt
-
-    wb_liquid = cfg["wb_balance"] * cfg["wb_withdraw_pct"]
-    cash_live = cfg["cash_bank"] + wb_liquid
-
-    limit = cfg["limit"]
-    free = limit - total
-    if total > limit:
-        flag = "🔴 СТОП — перевложение"
-    elif total >= limit * cfg["warn_ratio"]:
-        flag = "🟡 Осторожно — запас < 20%"
-    else:
-        flag = "🟢 ОК"
-
-    return {
-        "abroad": abroad, "sklad": sklad, "mkt": mkt, "total": total,
-        "limit": limit, "free": free, "flag": flag,
-        "cash_bank": cfg["cash_bank"], "wb_liquid": wb_liquid, "cash_live": cash_live,
-        "coverage": cash_live / total if total else 0.0,
-        "stocks": stocks, "wb_api": wb_api, "orders": cfg["abroad_orders"],
-    }
-
-
-def render(r: dict) -> str:
-    L = []
-    a = L.append
-    today = dt.date.today().isoformat()
-    a(f"# Монитор вложений в товар — {today}\n")
-    a(f"## {r['flag']}\n")
-    a("## Всего в товаре\n")
-    a("| Стадия | Сумма |")
-    a("|---|---|")
-    a(f"| 🌍 Заказано за границей (в пути) | {rub(r['abroad'])} |")
-    a(f"| 📦 На складе | {rub(r['sklad'])} |")
-    a(f"| 🛒 На маркетах (товар) | {rub(r['mkt'])} |")
-    a(f"| **💰 ВСЕГО В ТОВАРЕ** | **{rub(r['total'])}** |")
-    a(f"| 🎯 Лимит | {rub(r['limit'])} |")
-    label = "Свободный лимит" if r["free"] >= 0 else "Превышение лимита"
-    a(f"| **{label}** | **{rub(r['free'])}** |\n")
-
-    a("## Свободные деньги\n")
-    a("| Источник | Сумма |")
-    a("|---|---|")
-    a(f"| Кэш в банках | {rub(r['cash_bank'])} |")
-    a(f"| Вывод с WB в понедельник (30%) | {rub(r['wb_liquid'])} |")
-    a(f"| **Живой кэш** | **{rub(r['cash_live'])}** |")
-    a(f"| Покрытие товара живым кэшом | {r['coverage']*100:.0f}% |\n")
-
-    a("## Разбивка «в товаре»\n")
-    a("| Источник | Склад | Маркеты |")
-    a("|---|---|---|")
-    for s in r["stocks"]:
-        mkt = rub(s["mkt"]) if s["use_marketplace"] else "— (см. отчёт ВБ)"
-        a(f"| {s['label']} ({s['sheet']}) | {rub(s['sklad'])} | {mkt} |")
-    w = r["wb_api"]
-    a(f"| {w['label']} | — | {rub(w['mkt'])} |")
-    a("")
-    if w["units_missing"]:
-        a(f"> ⚠️ В отчёте ВБ у {w['units_missing']:,.0f} ед. нет себестоимости "
-          f"(не сопоставлено по Артикулу ВБ) — не учтены. "
-          f"Кабинет Скляров исключён намеренно (не работает).\n".replace(",", " "))
-
-    a("## Заказано за границей\n")
-    a("| Заказ | Сумма (валюта) | В рублях |")
-    a("|---|---|---|")
-    for o in r["orders"]:
-        amt = f"{o['amount']:,.0f}".replace(",", " ") + f" {o['currency']}"
-        a(f"| {o['label']} | {amt} | {rub(order_to_rub(o))} |")
-    a("")
+def crosscheck(cfg) -> str:
+    snap = cfg["snapshot"]
+    stocks = [_analyze_stock(sf) for sf in cfg["stock_files"]]
+    wb_api = _analyze_wb_api(cfg["wb_api"])
+    f_sklad = sum(s["sklad"] for s in stocks)
+    f_mkt = wb_api["mkt"] + sum(s["mkt"] for s in stocks if s["use_marketplace"])
+    f_abroad = sum(_order_to_rub(o) for o in cfg["abroad_orders"])
+    L = ["## Перепроверка из файлов (справочно)\n",
+         "| Стадия | Ручной срез | Из файлов | Δ |", "|---|---|---|---|"]
+    def line(name, manual, fromfile):
+        L.append(f"| {name} | {rub(manual)} | {rub(fromfile)} | {rub(fromfile-manual)} |")
+    line("Заказано за границей (полный заказ)", snap["abroad_paid"], f_abroad)
+    line("Склад", snap["sklad"], f_sklad)
+    line("Маркеты (товар)", snap["marketplace_goods"], f_mkt)
+    L.append("")
+    L.append("> Заказ за границей из файлов — это ПОЛНАЯ сумма заказа (790 млн вон "
+             "+ $67k), а в срезе — только оплаченная часть; расхождение ожидаемо.")
+    if wb_api["units_missing"]:
+        L.append(f"> В отчёте ВБ {wb_api['units_missing']:,.0f} ед. без себестоимости "
+                 f"не учтены.".replace(",", " "))
     return "\n".join(L)
 
 
 def main():
     ap = argparse.ArgumentParser(description="Монитор вложений в товар")
     ap.add_argument("--report", action="store_true", help="записать отчёт в outputs/")
+    ap.add_argument("--crosscheck", action="store_true", help="сверить срез с файлами")
     args = ap.parse_args()
 
-    r = build(CONFIG)
+    r = build(CONFIG["snapshot"])
     text = render(r)
+    if args.crosscheck:
+        text += "\n" + crosscheck(CONFIG) + "\n"
     print(text)
 
     if args.report:
