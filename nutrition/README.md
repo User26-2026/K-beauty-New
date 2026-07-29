@@ -91,4 +91,5 @@ TDEE ≈ 2191 × 1.35 ≈ 2960 ккал
 - `nutrition/cooking_instructions.md` — как готовить контейнеры на неделю
 - `nutrition/supplements.md` — принимаемые БАДы и заметки по единственной почке
 - `nutrition/staple_products.md` — справочник постоянных продуктов (для быстрого подсчёта)
+- `nutrition/simple_menu.md` — простое меню-конструктор на неделю (без ежедневного подсчёта)
 - `nutrition/README.md` — этот план
