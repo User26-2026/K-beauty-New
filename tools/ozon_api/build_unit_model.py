@@ -18,6 +18,7 @@ from calc_unit_ozon import (COSTS, DRR, TAX, ACQUIRING, STORAGE_L_DAY,
 ROOT = Path(__file__).parent.parent.parent
 PRICES = ROOT / 'data' / 'ozon_api' / 'prices.json'
 INFO = ROOT / 'data' / 'ozon_api' / 'product_info.json'
+LITRAGE = ROOT / 'data' / 'litrage' / 'litrage_reference.json'
 OUT = ROOT / 'outputs' / 'ozon'
 
 
@@ -31,6 +32,37 @@ def load_liters():
         if isinstance(meta, dict) and meta.get('liters'):
             out[str(pid)] = float(meta['liters'])
     return out
+
+
+def _norm(s):
+    return ''.join(ch for ch in str(s).lower() if ch.isalnum())
+
+
+def load_litrage_ref():
+    """Справочник литража по артикулу продавца (data/litrage/litrage_reference.json).
+    Приоритетный источник объёма. Возвращает (точный dict, нормализованный dict).
+    """
+    if not LITRAGE.exists():
+        return {}, {}
+    ref = json.loads(LITRAGE.read_text())
+    ref_norm = {_norm(k): v for k, v in ref.items()}
+    return ref, ref_norm
+
+
+def litrage_for(offer, ref, ref_norm):
+    """Литраж по offer_id: точное совпадение → нормализованное → префикс (в обе
+    стороны, чтобы ловить хвосты вроде ' AMPOULE'). None, если не нашли."""
+    if not offer:
+        return None
+    if offer in ref:
+        return ref[offer]
+    n = _norm(offer)
+    if n in ref_norm:
+        return ref_norm[n]
+    for k, v in ref_norm.items():
+        if k.startswith(n) or n.startswith(k):
+            return v
+    return None
 
 
 def scheme_inputs(item, scheme):
@@ -63,7 +95,8 @@ def build():
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
     items = json.loads(PRICES.read_text())
-    liters = load_liters()  # объём в литрах из габаритов (если выгружены)
+    liters = load_liters()  # объём из габаритов Ozon (если выгружены)
+    ref, ref_norm = load_litrage_ref()  # справочник литража по артикулу (приоритет)
     rows = []
     for it in items:
         if it.get('offer_id') not in COSTS:
@@ -71,8 +104,10 @@ def build():
         # только FBO
         comm, logi, lastm, retb = scheme_inputs(it, 'fbo')
         pid = str(it.get('product_id'))
-        # объём: реальные литры из габаритов, иначе fallback на volume_weight
-        vol = liters.get(pid) or num(it.get('volume_weight'))
+        offer = it.get('offer_id')
+        # объём: приоритет — справочник литража, затем габариты Ozon, затем вес
+        vol = (litrage_for(offer, ref, ref_norm)
+               or liters.get(pid) or num(it.get('volume_weight')))
         rows.append({
             'offer': it.get('offer_id'),
             'price': num(it.get('price', {}).get('price')),
