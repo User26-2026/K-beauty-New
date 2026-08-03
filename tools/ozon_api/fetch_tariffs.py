@@ -87,11 +87,21 @@ def fetch_prices():
     return items
 
 
-def fetch_product_names(product_ids):
-    """Имена и категория товаров (POST /v3/product/info/list), чанки по 1000.
+def _liters_from_dims(depth, width, height, unit):
+    """Объём в литрах из габаритов: (Д×Ш×В в см) / 1000. Единицы — mm/cm/m."""
+    f = {'mm': 0.1, 'cm': 1.0, 'дм': 10.0, 'м': 100.0, 'm': 100.0}.get(
+        (unit or 'mm').lower(), 0.1)
+    d, w, h = num(depth), num(width), num(height)
+    if d > 0 and w > 0 and h > 0:
+        return round((d * f) * (w * f) * (h * f) / 1000.0, 3)
+    return None
 
-    Нужно только для читабельности таблицы: комиссии уже есть в prices.
-    Ошибки не критичны — тогда идём без имён/категорий.
+
+def fetch_product_names(product_ids):
+    """Имена, категория и габариты товаров (POST /v3/product/info/list).
+
+    Из габаритов (depth/width/height/dimension_unit) считаем объём в литрах.
+    Ошибки не критичны — тогда идём без имён/категорий/литража.
     """
     info = {}
     ids = [i for i in product_ids if i]
@@ -104,10 +114,48 @@ def fetch_product_names(product_ids):
                 info[it.get('id')] = {
                     'name': it.get('name', ''),
                     'category_id': it.get('description_category_id', ''),
+                    'liters': _liters_from_dims(it.get('depth'), it.get('width'),
+                                                it.get('height'),
+                                                it.get('dimension_unit')),
                 }
         except Exception as e:
             print(f'  info/list чанк {i}: {e}')
         time.sleep(0.3)
+    save_json('product_info', info)
+    return info
+
+
+def fetch_dimensions(product_ids, info):
+    """Габариты через /v4/product/info/attributes — добираем литраж там, где
+    info/list не отдал габариты. Пагинация через last_id.
+    """
+    ids = [i for i in product_ids if i]
+    for i in range(0, len(ids), 1000):
+        chunk = ids[i:i + 1000]
+        last = ''
+        while True:
+            try:
+                data = post('/v4/product/info/attributes', {
+                    'filter': {'product_id': [str(x) for x in chunk],
+                               'visibility': 'ALL'},
+                    'limit': 1000, 'last_id': last}) or {}
+            except Exception as e:
+                print(f'  attributes чанк {i}: {e}')
+                break
+            for it in data.get('result', []) or []:
+                pid = it.get('id')
+                lit = _liters_from_dims(it.get('depth'), it.get('width'),
+                                        it.get('height'), it.get('dimension_unit'))
+                if not lit:
+                    continue
+                if pid in info and not info[pid].get('liters'):
+                    info[pid]['liters'] = lit
+                elif pid not in info:
+                    info[pid] = {'liters': lit}
+            last = data.get('last_id', '') or ''
+            if not last:
+                break
+            time.sleep(0.3)
     save_json('product_info', info)
     return info
 
@@ -219,8 +267,11 @@ if __name__ == '__main__':
     print('-> prices (комиссии + логистика)')
     prices = fetch_prices()
 
-    print('-> product_info (имена, категории)')
-    info = fetch_product_names([p.get('product_id') for p in prices])
+    print('-> product_info (имена, категории, габариты→литры)')
+    pids = [p.get('product_id') for p in prices]
+    info = fetch_product_names(pids)
+    print('-> dimensions (attributes) — добор литража')
+    info = fetch_dimensions(pids, info)
 
     print('-> category tree')
     cat_names = fetch_category_names()
