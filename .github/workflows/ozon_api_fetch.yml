@@ -6,6 +6,18 @@ on:
     # ежедневный прогон не нужен. Некруглая минута — короче очередь раннеров.
     - cron: '41 5 * * 1'
   workflow_dispatch:  # Ручной запуск из вкладки Actions
+    # Разовый fallback, если репо-секреты недоступны: ключ можно передать
+    # параметрами запуска. Значения маскируются (::add-mask::), а логи прогона
+    # рекомендуется удалить сразу после. По умолчанию берём секреты.
+    inputs:
+      client_id:
+        description: 'Ozon Client-Id (только если нет секрета OZON_CLIENT_ID)'
+        required: false
+        default: ''
+      api_key:
+        description: 'Ozon Api-Key (только если нет секрета OZON_API_KEY)'
+        required: false
+        default: ''
 
 permissions:
   contents: write  # нужно для git push результатов
@@ -26,9 +38,19 @@ jobs:
 
       - name: Fetch Ozon tariffs (read-only)
         env:
-          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
-          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-        run: python tools/ozon_api/fetch_tariffs.py
+          SECRET_CID: ${{ secrets.OZON_CLIENT_ID }}
+          SECRET_KEY: ${{ secrets.OZON_API_KEY }}
+          IN_CID: ${{ inputs.client_id }}
+          IN_KEY: ${{ inputs.api_key }}
+        run: |
+          # Маскируем оба значения в логах до первого использования.
+          for v in "$IN_KEY" "$IN_CID" "$SECRET_KEY" "$SECRET_CID"; do
+            [ -n "$v" ] && echo "::add-mask::$v"
+          done
+          # Приоритет у секретов; параметры запуска — разовый fallback.
+          export OZON_CLIENT_ID="${SECRET_CID:-$IN_CID}"
+          export OZON_API_KEY="${SECRET_KEY:-$IN_KEY}"
+          python tools/ozon_api/fetch_tariffs.py
 
       - name: Commit & push data
         if: always()  # коммитим то, что скачалось, даже при частичных ошибках
