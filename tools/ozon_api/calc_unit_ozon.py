@@ -32,6 +32,7 @@ TAX = 0.08           # налог с оборота (как в Celimax_unit_mode
 ACQUIRING = 0.015    # эквайринг/приём платежей Ozon (допущение ~1.5%)
 STORAGE_L_DAY = 0.16 # ₽/литр/день (Юнит!B6) — прокси для хранения
 STORAGE_DAYS = 30    # дней хранения (Юнит!B7)
+FULFILLMENT = 60.0   # фулфилмент/обработка, ₽/шт — складываем с себестоимостью
 
 # Себестоимость по последнему приходу, ₽ (желтая колонка остатков).
 COSTS = {
@@ -82,20 +83,22 @@ def calc(item, scheme='fbo'):
     reverse = ret_base * (1 - buyout(offer))
     storage = STORAGE_L_DAY * STORAGE_DAYS * vol
     ads = price * DRR
+    cost_total = cost + FULFILLMENT  # себестоимость + фулфилмент
 
     margin_before = (price - commission - logistics - last_mile - acquiring
-                     - tax - reverse - storage - cost)
+                     - tax - reverse - storage - cost_total)
     margin = margin_before - ads
-    roi = margin / cost * 100 if cost else None
+    roi = margin / cost_total * 100 if cost_total else None
     # Цена безубыточности (маржа с рекламой = 0): решаем по цене.
     # Все проценты (comm_pct, ACQUIRING, TAX, DRR) — от цены, поэтому:
-    #   price*(1 - k) = logistics + last_mile + reverse + storage + cost
+    #   price*(1 - k) = logistics + last_mile + reverse + storage + cost_total
     k = comm_pct / 100 + ACQUIRING + TAX + DRR
-    fixed = logistics + last_mile + reverse + storage + cost
+    fixed = logistics + last_mile + reverse + storage + cost_total
     breakeven = fixed / (1 - k) if k < 1 else None
 
     return {
         'offer': offer, 'scheme': scheme.upper(), 'price': price, 'cost': round(cost, 2),
+        'fulfillment': round(FULFILLMENT, 2), 'cost_total': round(cost_total, 2),
         'comm_pct': comm_pct, 'commission': round(commission, 2),
         'logistics': round(logistics, 2), 'last_mile': round(last_mile, 2),
         'acquiring': round(acquiring, 2), 'tax': round(tax, 2),
@@ -109,17 +112,17 @@ def calc(item, scheme='fbo'):
     }
 
 
-HEAD = ['Товар', 'Схема', 'Цена', 'Себест.', 'Комиссия %', 'Комиссия ₽',
-        'Логистика', 'Посл.миля', 'Эквайринг', 'Налог', 'Обр.лог', 'Хранение',
-        'Реклама (ДРР)', 'Маржа до рекл.', 'Маржа/шт', 'Маржа % цены', 'ROI %',
-        'Цена безубыт.']
+HEAD = ['Товар', 'Схема', 'Цена', 'Себест.', 'Фулфилмент', 'Себест.+фулфилмент',
+        'Комиссия %', 'Комиссия ₽', 'Логистика', 'Посл.миля', 'Эквайринг',
+        'Налог', 'Обр.лог', 'Хранение', 'Реклама (ДРР)', 'Маржа до рекл.',
+        'Маржа/шт', 'Маржа % цены', 'ROI %', 'Цена безубыт.']
 
 
 def row(r):
-    return [r['offer'], r['scheme'], r['price'], r['cost'], r['comm_pct'],
-            r['commission'], r['logistics'], r['last_mile'], r['acquiring'],
-            r['tax'], r['reverse'], r['storage'], r['ads'],
-            r['margin_before_ads'], r['margin'], r['margin_pct_price'],
+    return [r['offer'], r['scheme'], r['price'], r['cost'], r['fulfillment'],
+            r['cost_total'], r['comm_pct'], r['commission'], r['logistics'],
+            r['last_mile'], r['acquiring'], r['tax'], r['reverse'], r['storage'],
+            r['ads'], r['margin_before_ads'], r['margin'], r['margin_pct_price'],
             r['roi_pct'], r['breakeven_price']]
 
 
@@ -139,7 +142,8 @@ if __name__ == '__main__':
           f"эквайринг={ACQUIRING*100:.1f}%  выкуп: пенка 96% / прочее 92,19%")
     for r in rows:
         print(f"\n{r['offer']}  [{r['scheme']}]")
-        print(f"  цена {r['price']:.0f} | себест. {r['cost']:.2f} | "
+        print(f"  цена {r['price']:.0f} | себест. {r['cost']:.2f} + фулфилмент "
+              f"{r['fulfillment']:.0f} = {r['cost_total']:.2f} | "
               f"комиссия {r['comm_pct']:.0f}% = {r['commission']:.0f} | "
               f"логистика {r['logistics']:.0f} | посл.миля {r['last_mile']:.0f} | "
               f"эквайринг {r['acquiring']:.0f} | налог {r['tax']:.0f} | "
