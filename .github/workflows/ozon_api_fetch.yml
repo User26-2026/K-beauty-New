@@ -1,0 +1,40 @@
+name: Ozon API — комиссии, тарифы, логистика (только чтение)
+
+on:
+  schedule:
+    # Раз в неделю, пн 05:41 UTC (08:41 MSK). Тарифы Ozon меняются нечасто,
+    # ежедневный прогон не нужен. Некруглая минута — короче очередь раннеров.
+    - cron: '41 5 * * 1'
+  workflow_dispatch:  # Ручной запуск из вкладки Actions
+
+permissions:
+  contents: write  # нужно для git push результатов
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests openpyxl
+
+      - name: Fetch Ozon tariffs (read-only)
+        env:
+          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
+          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+        run: python tools/ozon_api/fetch_tariffs.py
+
+      - name: Commit & push data
+        if: always()  # коммитим то, что скачалось, даже при частичных ошибках
+        run: |
+          git config user.name  "ozon-api-bot"
+          git config user.email "ozon-api-bot@noreply"
+          git add data/ozon_api/ outputs/ozon/
+          git diff --cached --quiet || git commit -m "data: Ozon tariffs snapshot $(date -u +%Y-%m-%d)"
+          git push
