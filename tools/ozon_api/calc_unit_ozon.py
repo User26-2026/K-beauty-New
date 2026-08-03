@@ -126,6 +126,67 @@ def row(r):
             r['roi_pct'], r['breakeven_price']]
 
 
+def write_xlsx(rows):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        print('  openpyxl нет — пропускаю xlsx')
+        return
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Юнитка Ozon'
+
+    thin = Side(style='thin', color='D0D0D0')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill = PatternFill('solid', fgColor='305496')
+    cost_fill = PatternFill('solid', fgColor='FCE4D6')   # база затрат
+    res_fill = PatternFill('solid', fgColor='E2EFDA')    # маржа/ROI
+
+    ws.append(HEAD)
+    for c in ws[1]:
+        c.font = Font(bold=True, color='FFFFFF')
+        c.fill = head_fill
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        c.border = border
+
+    money = '#,##0.00'
+    int_fmt = '#,##0'
+    pct = '0.0"%"'
+    col = {name: i + 1 for i, name in enumerate(HEAD)}
+
+    for r in rows:
+        ws.append(row(r))
+        rr = ws.max_row
+        for i in range(1, len(HEAD) + 1):
+            ws.cell(rr, i).border = border
+        for name in ['Цена', 'Комиссия ₽', 'Логистика', 'Посл.миля', 'Эквайринг',
+                     'Налог', 'Обр.лог', 'Хранение', 'Реклама (ДРР)',
+                     'Маржа до рекл.', 'Маржа/шт', 'Цена безубыт.']:
+            ws.cell(rr, col[name]).number_format = int_fmt
+        for name in ['Себест.', 'Фулфилмент', 'Себест.+фулфилмент']:
+            ws.cell(rr, col[name]).number_format = money
+            ws.cell(rr, col[name]).fill = cost_fill
+        for name in ['Комиссия %', 'Маржа % цены', 'ROI %']:
+            ws.cell(rr, col[name]).number_format = pct
+        ws.cell(rr, col['Маржа/шт']).fill = res_fill
+        ws.cell(rr, col['ROI %']).fill = res_fill
+        ws.cell(rr, col['Маржа/шт']).font = Font(bold=True)
+        ws.cell(rr, col['ROI %']).font = Font(bold=True)
+
+    widths = {'Товар': 42, 'Схема': 7, 'Себест.+фулфилмент': 16, 'Реклама (ДРР)': 12,
+              'Маржа до рекл.': 12, 'Маржа % цены': 11, 'Цена безубыт.': 12}
+    for name, i in col.items():
+        letter = ws.cell(1, i).column_letter
+        ws.column_dimensions[letter].width = widths.get(name, 11)
+    ws.freeze_panes = 'C2'
+    ws.row_dimensions[1].height = 30
+
+    xlsx = OUT / 'ozon_unit_economics_2026-08-03.xlsx'
+    wb.save(xlsx)
+    print(f"Сохранено: {xlsx}")
+
+
 if __name__ == '__main__':
     items = json.loads(PRICES.read_text())
     rows = []
@@ -159,3 +220,5 @@ if __name__ == '__main__':
         lines.append('\t'.join(str(x) for x in row(r)))
     tsv.write_text('\n'.join(lines), encoding='utf-8')
     print(f"\nСохранено: {tsv}")
+
+    write_xlsx(rows)
