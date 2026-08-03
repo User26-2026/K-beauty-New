@@ -87,6 +87,13 @@ def fetch_prices():
     return items
 
 
+def num(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _liters_from_dims(depth, width, height, unit):
     """Объём в литрах из габаритов: (Д×Ш×В в см) / 1000. Единицы — mm/cm/m."""
     f = {'mm': 0.1, 'cm': 1.0, 'дм': 10.0, 'м': 100.0, 'm': 100.0}.get(
