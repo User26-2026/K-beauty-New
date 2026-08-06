@@ -2,7 +2,7 @@
 import json, openpyxl, re, os
 SP=os.path.dirname(os.path.abspath(__file__))
 recs={str(r['Артикул WB']).strip():r for r in json.load(open(os.path.join(SP,'penki_recs.json')))}
-order=['204258828','307073881','868575374']  # in-stock only
+order=['204258828','307073881','868575374','207476777']  # in-stock only
 
 SOSTAV_EN={
  '868575374':'Purified Water; Sodium C14-16 Olefin Sulfonate; Lauryl Betaine; Glycerin; Sodium Chloride; Lactobacillus/Panax Ginseng Root Ferment Filtrate; Lactobacillus/Soymilk Ferment Filtrate; Butylene Glycol; Sodium Hyaluronate; Hydroxypropyltrimonium Hyaluronate; Hydrolyzed Hyaluronic Acid; Sodium Acetylated Hyaluronate; Hyaluronic Acid; Sodium Hyaluronate Crosspolymer; Potassium Hyaluronate; Hydrogenated Lecithin; Centella Asiatica Extract; Camellia Sinensis Leaf Extract; 1,2-Hexanediol; Rosemary Leaf Extract; Allantoin; Xylitol; Panax Ginseng Berry Extract; Saponaria Officinalis Leaf Extract; Guar Hydroxypropyltrimonium Chloride; Maltodextrin; Hexylene Glycol; Propylene Glycol Laurate; Ceramide NP; Bifida Ferment Lysate; Glucose; Sodium Bicarbonate; Phytosteryl/Octyldodecyl Lauroyl Glutamate; Papain; Xylitylglucoside; Anhydroxylitol; Fructan; Ethylhexylglycerin; Gluconolactone; Caprylic/Capric Triglyceride',
@@ -11,11 +11,13 @@ SPOSOB={
  '204258828':'Выдавите небольшое количество средства на ладонь, добавьте воды и вспеньте. Мягкими массирующими движениями нанесите пену на влажную кожу лица и шеи, избегая области вокруг глаз; в Т-зоне проработайте по массажным линиям. Тщательно смойте тёплой водой. Начинать лучше 1 раз в день, вечером.',
  '307073881':'Намочите лицо тёплой водой. Небольшое количество пенки вспеньте во влажных руках до плотной пены и нанесите на кожу, мягко массируя всё лицо, уделяя внимание Т-зоне и порам. Тщательно смойте тёплой водой. Использовать утром и вечером, после снятия макияжа.',
  '868575374':'Выдавите небольшое количество геля на влажные ладони и вспеньте, при необходимости добавив немного воды. Нанесите мягкую пену на влажную кожу лица круговыми массирующими движениями, избегая области вокруг глаз. Тщательно смойте тёплой водой. Подходит для ежедневного применения утром и вечером.',
+ '207476777':'Возьмите умеренное количество пенки на ладонь и вспеньте с небольшим количеством воды до плотной пены. Мягко распределите по всему лицу лёгкими массирующими движениями, избегая области вокруг глаз. Тщательно смойте тёплой водой и продолжите привычный уход. Подходит для ежедневного применения.',
 }
 PRODUCER={
  '204258828':'COSRX INC.',                    # держатель бренда (OEM не подтверждён)
  '307073881':'Amorepacific Corporation',      # изготовитель (на упаковке)
  '868575374':'Manyo Factory Co., Ltd.',       # держатель бренда (OEM не подтверждён)
+ '207476777':'Myungin Cosmetics Co., Ltd.',   # изготовитель FARMSTAY
 }
 # per-item multiselects
 CUR={
@@ -29,8 +31,11 @@ CUR={
    'eff':['Очищение','Увлажнение','Восстановление'],
    'ing':['Лизат молочнокислых бактерий','Гиалуроновая кислота','Центелла','Пребиотики'],
    'feat':['Подходит для ежедневного применения']},
+ '207476777':{'vid':'пенка','skin':['Для всех типов кожи','Для сухой кожи','Для нормальной кожи'],
+   'eff':['Очищение','Увлажнение','Питание'],'ing':['Коллаген','Растительный экстракт'],
+   'feat':['Подходит для ежедневного применения']},
 }
-BRAND_CASE={'cosrx':'COSRX','etude house':'Etude House','manyo':'Manyo'}
+BRAND_CASE={'cosrx':'COSRX','etude house':'Etude House','manyo':'Manyo','farmstay':'FARMSTAY'}
 
 def title(r):
     name=str(r.get('Наименование') or '').strip()
