@@ -137,7 +137,7 @@ for i,aw in enumerate(order,1):
     setc(row,24,sostav)                             # Состав*
     setc(row,25,cur.get('area','Лицо'))             # Область использования*
     setc(row,26,'Нет')                              # нужен код маркировки*
-    setc(row,27,srok)                               # срок годности дней*
+    setc(row,27,1095)                               # срок годности дней* (фикс 1095)
     setc(row,30,r.get('Бренд'))                     # производитель
     setc(row,33,r.get('Описание'))                  # аннотация
     ings=detect_ing(r,cur.get('ing'))
