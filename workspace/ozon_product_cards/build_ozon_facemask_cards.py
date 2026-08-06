@@ -1,21 +1,39 @@
 # -*- coding: utf-8 -*-
 import json, openpyxl, re, os
 SP=os.path.dirname(os.path.abspath(__file__))
-recs={str(r['Артикул WB']).strip():r for r in json.load(open(os.path.join(SP,'maskB_recs.json')))}
-order=['226114831','226114935','226115141','226115248','226115324','226115478','226117746']
-PRODUCER_ALL='Barunson Co., Ltd.'  # OEM Petitfee (держатель — NS Retail Co., Ltd.)
-SPOSOB='На очищенную кожу лица наложите гидрогелевую маску (верхнюю и нижнюю части), плотно прижмите и оставьте на 20–30 минут. Снимите маску и мягко вбейте остатки эссенции подушечками пальцев до впитывания; смывать не нужно. Используйте 2–3 раза в неделю.'
-WEIGHT_DEFAULT=290  # г, вес упаковки 5-шт набора (по аналогам линейки)
-CUR={
- '226114831':{'eff':['Увлажнение','Восстановление'],'ing':['Растительный экстракт'],'app':['Дневной уход','Ночной уход'],'feat':[]},
- '226114935':{'eff':['Антивозрастной уход','Увлажнение'],'ing':[],'app':['Дневной уход','Ночной уход'],'feat':['С золотом']},
- '226115141':{'eff':['Антивозрастной уход','Восстановление'],'ing':['Муцин улитки'],'app':['Дневной уход','Ночной уход'],'feat':['С золотом']},
- '226115248':{'eff':['Тонизирование','Увлажнение'],'ing':['Кофеин','Растительный экстракт'],'app':['Дневной уход','Ночной уход'],'feat':[]},
- '226115324':{'eff':['Противоотечный','Увлажнение'],'ing':['Растительный экстракт'],'app':['Дневной уход','Ночной уход'],'feat':[]},
- '226115478':{'eff':['Антивозрастной уход','Увлажнение'],'ing':[],'app':['Дневной уход','Ночной уход'],'feat':['С золотом']},
- '226117746':{'eff':['Осветление','Увлажнение'],'ing':['Растительный экстракт'],'app':['Дневной уход','От пигментации'],'feat':[]},
+recs={}
+for fn in ['maskB_recs.json','add1_recs.json']:
+    for r in json.load(open(os.path.join(SP,fn))):
+        recs[str(r['Артикул WB']).strip()]=r
+
+# 7 гидрогелевых Petitfee + 3 тканевые (JMSolution ×2, Jigott)
+order=['226114831','226114935','226115141','226115248','226115324','226115478','226117746',
+       '214964091','214977901','255574453']
+
+SPOSOB_HYDRO='На очищенную кожу лица наложите гидрогелевую маску (верхнюю и нижнюю части), плотно прижмите и оставьте на 20–30 минут. Снимите маску и мягко вбейте остатки эссенции подушечками пальцев до впитывания; смывать не нужно. Используйте 2–3 раза в неделю.'
+SPOSOB_SHEET='После очищения и тонизирования достаньте маску, разверните и наложите на лицо, совместив вырезы для глаз, носа и губ. Разгладьте и оставьте на 15–20 минут, затем снимите и мягко вбейте остатки эссенции подушечками пальцев до впитывания; смывать не нужно.'
+WEIGHT_DEFAULT=290
+
+# Составы EN для тканевых (репрезентативные, ассорти) — заполнит ресёрч
+SOSTAV_EN={'214964091':'Water; Methylpropanediol; Glycerin; Glycereth-26; PEG/PPG-17/6 Copolymer; Sodium Hyaluronate; Hydrolyzed Hyaluronic Acid; Hyaluronic Acid; Collagen Extract; Allantoin; Trehalose; Betaine; Ethylhexylglycerin; Xanthan Gum; Hydroxyethylcellulose; Dipropylene Glycol; Butylene Glycol; Disodium Phosphate; Pentylene Glycol; Sodium Phosphate; Disodium EDTA; Glycine; Serine; Glutamic Acid; Aspartic Acid; Leucine; Alanine; Lysine; Proline; Threonine; Valine; 1,2-Hexanediol; PEG-60 Hydrogenated Castor Oil; Rosa Damascena Flower Water; Rosa Damascena Flower Oil; Phenoxyethanol', '214977901':'Water; Glycerin; Dipropylene Glycol; Sea Water; Butylene Glycol; 1,2-Hexanediol; Hydrolyzed Collagen; Hydrolyzed Conchiolin Protein; Pearl Extract; Undaria Pinnatifida Extract; Codium Fragile Extract; Enteromorpha Compressa Extract; Laminaria Japonica Extract; Salicornia Herbacea Extract; Sodium Hyaluronate; Hydrolyzed Hyaluronic Acid; Sodium Acetylated Hyaluronate; Olive Oil; Tocopheryl Acetate; Polysorbate 20; Ethylhexylglycerin; Carbomer; Tromethamine; Disodium EDTA; Phenoxyethanol; Fragrance', '255574453':'Water; Glycerin; Butylene Glycol; Betaine; Carbomer; Triethanolamine; Disodium EDTA; Hydroxyethylcellulose; Polysorbate 20; Sodium Hyaluronate; Tocopheryl Acetate; Allantoin; Panthenol; Portulaca Oleracea Extract; 1,2-Hexanediol; Phenoxyethanol; Fragrance'}
+PRODUCER={  # изготовители
+ '226114831':'Barunson Co., Ltd.','226114935':'Barunson Co., Ltd.','226115141':'Barunson Co., Ltd.',
+ '226115248':'Barunson Co., Ltd.','226115324':'Barunson Co., Ltd.','226115478':'Barunson Co., Ltd.','226117746':'Barunson Co., Ltd.',
+ '214964091':'GP Club Co., Ltd.','214977901':'GP Club Co., Ltd.','255574453':'Skinine Cosmetic Co., Ltd.',
 }
-BRAND_CASE={'petitfee':'Petitfee'}
+CUR={
+ '226114831':{'vid':'Гидрогелевая','units':5,'eff':['Увлажнение','Восстановление'],'ing':['Растительный экстракт'],'app':['Дневной уход','Ночной уход'],'feat':[]},
+ '226114935':{'vid':'Гидрогелевая','units':5,'eff':['Антивозрастной уход','Увлажнение'],'ing':[],'app':['Дневной уход','Ночной уход'],'feat':['С золотом']},
+ '226115141':{'vid':'Гидрогелевая','units':5,'eff':['Антивозрастной уход','Восстановление'],'ing':['Муцин улитки'],'app':['Дневной уход','Ночной уход'],'feat':['С золотом']},
+ '226115248':{'vid':'Гидрогелевая','units':5,'eff':['Тонизирование','Увлажнение'],'ing':['Кофеин','Растительный экстракт'],'app':['Дневной уход','Ночной уход'],'feat':[]},
+ '226115324':{'vid':'Гидрогелевая','units':5,'eff':['Противоотечный','Увлажнение'],'ing':['Растительный экстракт'],'app':['Дневной уход','Ночной уход'],'feat':[]},
+ '226115478':{'vid':'Гидрогелевая','units':5,'eff':['Антивозрастной уход','Увлажнение'],'ing':[],'app':['Дневной уход','Ночной уход'],'feat':['С золотом']},
+ '226117746':{'vid':'Гидрогелевая','units':5,'eff':['Осветление','Увлажнение'],'ing':['Растительный экстракт'],'app':['Дневной уход','От пигментации'],'feat':[]},
+ '214964091':{'vid':'Тканевая','units':10,'eff':['Увлажнение','Питание'],'ing':['Гиалуроновая кислота','Коллаген'],'app':['Дневной уход','Ночной уход'],'feat':[]},
+ '214977901':{'vid':'Тканевая','units':10,'eff':['Увлажнение'],'ing':['Коллаген','Гиалуроновая кислота'],'app':['Дневной уход','Ночной уход'],'feat':[]},
+ '255574453':{'vid':'Тканевая','units':15,'eff':['Увлажнение'],'ing':['Гиалуроновая кислота'],'app':['Дневной уход','Ночной уход'],'feat':[]},
+}
+BRAND_CASE={'petitfee':'Petitfee','jmsolution':'JMSolution','jigott':'Jigott'}
 def title(r):
     name=str(r.get('Наименование') or '').strip()
     brand=str(r.get('Бренд') or '').strip(); brand=BRAND_CASE.get(brand.lower(),brand)
@@ -30,6 +48,7 @@ def mm(x):
     try: return int(round(float(x)*10))
     except: return None
 
+missing=[]
 row=5
 for i,aw in enumerate(order,1):
     r=recs[aw]; cur=CUR[aw]
@@ -37,6 +56,9 @@ for i,aw in enumerate(order,1):
     w_kg=r.get('Вес с упаковкой (кг)')
     weight_g=int(round(float(w_kg)*1000)) if w_kg else WEIGHT_DEFAULT
     bc=r.get('Баркод'); bc=None if (bc in (0,'0',None) or str(bc).strip() in ('0','')) else bc
+    sostav = SOSTAV_EN[aw] if aw in SOSTAV_EN else r.get('Состав')
+    if not sostav: missing.append(aw)
+    sposob = SPOSOB_SHEET if cur['vid']=='Тканевая' else SPOSOB_HYDRO
     setc(row,1,i); setc(row,2,r.get('Артикул продавца')); setc(row,3,title(r))
     setc(row,6,7); setc(row,7,'Нет'); setc(row,8,'Нет')
     if bc: setc(row,10,bc)
@@ -45,13 +67,13 @@ for i,aw in enumerate(order,1):
     setc(row,16,photos[0] if photos else None)
     if len(photos)>1: setc(row,17,';'.join(photos[1:]))
     setc(row,19,'Маска косметическая'); setc(row,20,r.get('Бренд')); setc(row,21,r.get('Артикул продавца'))
-    setc(row,22,5)                              # единиц в товаре (набор 5 шт)
-    setc(row,25,r.get('Состав')); setc(row,26,'Нет')
-    setc(row,29,PRODUCER_ALL); setc(row,32,r.get('Описание'))
-    setc(row,35,SPOSOB)
+    setc(row,22,cur['units'])
+    setc(row,25,sostav); setc(row,26,'Нет')
+    setc(row,29,PRODUCER.get(aw) or r.get('Бренд')); setc(row,32,r.get('Описание'))
+    setc(row,35,sposob)
     ings=cur.get('ing') or []
     setc(row,36,';'.join(ings[:5]) if ings else None)
-    setc(row,37,'Гидрогелевая')                 # вид маски
+    setc(row,37,cur['vid'])
     setc(row,38,'Для всех типов кожи'); setc(row,39,';'.join(cur['eff'])); setc(row,40,';'.join(cur['app'])); setc(row,41,'Лицо')
     if cur.get('feat'): setc(row,42,';'.join(cur['feat']))
     setc(row,43,'Взрослая'); setc(row,44,'Женский'); setc(row,45,'Для любого возраста')
@@ -61,3 +83,4 @@ for i,aw in enumerate(order,1):
 os.makedirs('/home/user/K-beauty-New/outputs/ozon_facemask_cards',exist_ok=True)
 outp='/home/user/K-beauty-New/outputs/ozon_facemask_cards/ozon_facemasks_2026-08-06.xlsx'
 wb.save(outp); print('SAVED',outp,'| rows:',len(order))
+print('MISSING состав:', missing)
