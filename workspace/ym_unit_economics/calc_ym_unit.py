@@ -25,9 +25,14 @@ STOCK = ROOT / "data" / "stock_costs" / "ОСТАТКИ_КОРЕЯ_03.06.xlsx"
 STOCK_SHEET = "03.06.26"
 STOCK_NAME_COL = 8  # H, Наименование
 STOCK_COST_COL = 18  # R, Себестоимость по последнему приходу
-OUT = ROOT / "outputs" / "ym_unit_economics_2026-08-17.xlsx"
+OUT_DIR = ROOT / "outputs" / "ym"
+OUT = OUT_DIR / "ym_unit_economics_2026-08-17.xlsx"  # расчет со сводкой и решениями
+OUT_UNITKA = OUT_DIR / "ym_unitka_fbo_fbs_2026-08-17.xlsx"  # чистая юнитка в формате Ozon
 
-TARGET_ROI = 0.25  # целевой ROI для новых строк, как в формульных строках модели
+# Целевой ROI для цены-формулы: на FBO 25%, на FBS 20% — как в юнитке Ozon
+# (outputs/ozon/ozon_unitka_fbo_fbs_2026-08-05.xlsx: FBO 1.25, FBS 1.20).
+TARGET_ROI = 0.25
+TARGET_ROI_BY_SHEET = {"Юнитка FBO": 0.25, "Юнитка FBS": 0.20}
 DEFAULT_CLICK = 0.07  # оплата за клик, % от цены без СПП
 DEFAULT_TOP = 0.08  # вывод в топ, % от цены без СПП
 BUYOUT = 0.90
@@ -276,6 +281,7 @@ def unit(
     click_pct: float,
     top_pct: float,
     params: dict[str, float],
+    target_roi: float = TARGET_ROI,
 ) -> dict[str, float]:
     """Одна строка юнитки по логике модели Яндекс Маркета."""
     ff = params["ff"]
@@ -318,9 +324,29 @@ def unit(
         "margin_pct": margin / price if price else 0.0,
         "roi": margin / cost_base if cost_base else 0.0,
         "breakeven": (fixed + cost_base) / (1 - pct - click_pct - top_pct),
-        "price_target": (fixed + (1 + TARGET_ROI) * cost_base)
+        "price_target": (fixed + (1 + target_roi) * cost_base)
         / (1 - pct - click_pct - top_pct),
     }
+
+
+def price_formula(spec: SheetSpec, row: int, target_roi: float) -> str:
+    """Формула цены под целевой ROI — точно та же, что в формульных строках модели."""
+    pc = col_letter(spec.param_col)
+    L = {
+        key: col_letter(getattr(spec, key))
+        for key in vars(spec)
+        if isinstance(getattr(spec, key), int)
+    }
+    terms = [L["logistics"], L["pvz"], L["rev_log"], L["storage"], L["crossdock"]]
+    if spec.pvz_shipment is not None:
+        terms.append(L["pvz_shipment"])
+    fixed = "+".join(f"{c}{row}" for c in terms)
+    return (
+        f"=({1 + target_roi:g}*{L['cost_base']}{row}+{fixed})/(1-{L['comm_pct']}{row}"
+        f"-${pc}${spec.params['nonlocal']}-${pc}${spec.params['acquiring']}"
+        f"-(1-{L['spp']}{row})*${pc}${spec.params['tax']}-${pc}${spec.params['subscription']}"
+        f"-{L['click_pct']}{row}-{L['top_pct']}{row})"
+    )
 
 
 def verify(wb_values) -> list[str]:
@@ -392,6 +418,7 @@ def fill_missing(wb_formulas, wb_values, costs: dict[str, float]) -> list[dict]:
             logistics = logistics_for(volume)
             comm_pct = 0.47 if spec.pvz_shipment is not None else 0.41
             spp = 0.45
+            target_roi = TARGET_ROI_BY_SHEET[spec.title]
             P = spec.param_col
             pc = col_letter(P)
             L = {key: col_letter(getattr(spec, key)) for key in vars(spec) if isinstance(getattr(spec, key), int)}
@@ -468,20 +495,9 @@ def fill_missing(wb_formulas, wb_values, costs: dict[str, float]) -> list[dict]:
                 f"+${pc}${spec.params['subscription']}+{L['click_pct']}{r}+{L['top_pct']}{r})"
             )
             put(spec.breakeven, f"=({fixed_sum})/({denom})")
-            # Цена под целевой ROI 25% — та же формула, что в формульных строках модели.
-            target_fixed = "+".join(
-                f"{c}{r}" for c in fixed_terms if c != L["cost_base"]
-            )
-            put(
-                spec.price,
-                f"=({1 + TARGET_ROI}*{L['cost_base']}{r}+{target_fixed})/(1-{L['comm_pct']}{r}"
-                f"-${pc}${spec.params['nonlocal']}-${pc}${spec.params['acquiring']}"
-                f"-(1-{L['spp']}{r})*${pc}${spec.params['tax']}-${pc}${spec.params['subscription']}"
-                f"-{L['click_pct']}{r}-{L['top_pct']}{r})",
-            )
+            put(spec.price, price_formula(spec, r, target_roi))
 
-            calc = unit(
-                price=0.0,
+            common = dict(
                 cost=cost,
                 volume=volume,
                 logistics=logistics,
@@ -490,21 +506,13 @@ def fill_missing(wb_formulas, wb_values, costs: dict[str, float]) -> list[dict]:
                 click_pct=DEFAULT_CLICK,
                 top_pct=DEFAULT_TOP,
                 params=params,
+                target_roi=target_roi,
             )
-            final = unit(
-                price=calc["price_target"],
-                cost=cost,
-                volume=volume,
-                logistics=logistics,
-                comm_pct=comm_pct,
-                spp=spp,
-                click_pct=DEFAULT_CLICK,
-                top_pct=DEFAULT_TOP,
-                params=params,
-            )
+            final = unit(price=unit(price=0.0, **common)["price_target"], **common)
             note = wsv.cell(row, spec.comment).value
             wsf.cell(row, spec.comment).value = (
-                f"{note + '; ' if note else ''}добавлено в расчет: цена под ROI 25%, объем оценочный"
+                f"{note + '; ' if note else ''}добавлено в расчет: цена под ROI "
+                f"{target_roi:.0%}, объем оценочный"
             )
             filled.append(
                 {
@@ -576,8 +584,10 @@ def build_summary(wb_formulas, wb_values, costs: dict[str, float]) -> list[list]
                 price = float(price_cell)
                 source = "ручная цена в модели"
             else:
-                price = unit(price=0.0, **common)["price_target"]
-                source = "формула: ROI 25%"
+                # коэффициент целевого ROI берем из самой формулы: =(1.25*... или =(1.2*...
+                coef = float(re.match(r"=\((\d+(?:\.\d+)?)\*", price_cell).group(1))
+                price = unit(price=0.0, target_roi=coef - 1, **common)["price_target"]
+                source = f"формула: ROI {coef - 1:.0%}"
             calc = unit(price=price, **common)
             comp = wsv.cell(row, spec.comp_price).value
             rows.append(
@@ -602,6 +612,34 @@ def build_summary(wb_formulas, wb_values, costs: dict[str, float]) -> list[list]
                 ]
             )
     return rows
+
+
+def build_unitka(costs: dict[str, float], wb_values) -> dict[str, int]:
+    """Чистая юнитка в формате Ozon: два листа, все цены живыми формулами.
+
+    Отличия от файла клиента: дозаполнены пустые строки и 61 цена на FBS,
+    вставленная значениями, переведена обратно в формулу под ROI 20% (числа те же).
+    """
+    OUT_UNITKA.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(SRC, OUT_UNITKA)
+    wb = openpyxl.load_workbook(OUT_UNITKA, data_only=False)
+    fill_missing(wb, wb_values, costs)
+    stats = {"формул на FBS вместо значений": 0, "хвост пустых строк убран": 0}
+    for spec in SPECS:
+        ws = wb[spec.title]
+        if spec is FBS:
+            for row in range(spec.header_row + 1, LAST_ROW + 1):
+                price = ws.cell(row, spec.price).value
+                if isinstance(price, (int, float)) and ws.cell(row, spec.cost).value is not None:
+                    ws.cell(row, spec.price).value = price_formula(
+                        spec, row, TARGET_ROI_BY_SHEET[spec.title]
+                    )
+                    stats["формул на FBS вместо значений"] += 1
+        if ws.max_row > LAST_ROW:
+            stats["хвост пустых строк убран"] += ws.max_row - LAST_ROW
+            ws.delete_rows(LAST_ROW + 1, ws.max_row - LAST_ROW)
+    wb.save(OUT_UNITKA)
+    return stats
 
 
 def build_decisions(summary: list[list], head: list[str]) -> list[list]:
@@ -665,7 +703,12 @@ def main() -> None:
     for p in problems[:10]:
         print("  ", p)
 
-    OUT.parent.mkdir(exist_ok=True)
+    stats = build_unitka(costs, wb_values)
+    print(f"записан {OUT_UNITKA.relative_to(ROOT)} — юнитка в формате Ozon: " + ", ".join(
+        f"{k} {v}" for k, v in stats.items()
+    ))
+
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(SRC, OUT)
     wb_formulas = openpyxl.load_workbook(OUT, data_only=False)
     filled = fill_missing(wb_formulas, wb_values, costs)
