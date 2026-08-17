@@ -4,9 +4,14 @@
 1. Пересчитывает все заполненные строки модели в Python и сверяет с кэшем Excel.
 2. Достает себестоимость по последнему приходу для строк без себестоимости
    из data/stock_costs/ОСТАТКИ_КОРЕЯ_03.06.xlsx (колонка R).
-3. Дописывает эти строки в модель теми же формулами (цена под ROI 25%).
-4. Пишет outputs/ym_unit_economics_<дата>.xlsx: обе вкладки модели с формулами
-   плюс вкладка "Сводка" с ценой, себестоимостью, ДРР, маржой и ROI.
+3. Дописывает эти строки в модель теми же формулами (цена под ROI 25% на FBO,
+   20% на FBS — как в юнитке Ozon).
+4. Подставляет ставку Маркета по категории каждого товара из официального файла
+   ставок с 01.07.2026 (см. ym_category_rates.py).
+5. Пишет два файла:
+   - outputs/ym/ym_unitka_fbo_fbs_<дата>.xlsx — чистая юнитка, два листа;
+   - outputs/ym/ym_unit_economics_<дата>.xlsx — она же плюс листы "Тарифы",
+     "Сводка" и "Решения FBO".
 """
 
 from __future__ import annotations
@@ -18,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import openpyxl
+
+from ym_category_rates import load_rates, rate_for
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "data" / "unit_economics" / "ym_unit_model_11.08.26.xlsx"
@@ -614,7 +621,78 @@ def build_summary(wb_formulas, wb_values, costs: dict[str, float]) -> list[list]
     return rows
 
 
-def build_unitka(costs: dict[str, float], wb_values) -> dict[str, int]:
+def apply_category_rates(wb) -> list[dict]:
+    """Ставка Маркета по категории товара вместо единой ставки на весь лист.
+
+    Берем официальный файл ставок с 01.07.2026: FBY для листа FBO, FBS для FBS.
+    """
+    rates = load_rates()
+    changed: list[dict] = []
+    for spec in SPECS:
+        ws = wb[spec.title]
+        model = "FBS" if spec.pvz_shipment is not None else "FBY"
+        for row in range(spec.header_row + 1, LAST_ROW + 1):
+            name = ws.cell(row, spec.name).value
+            if not isinstance(name, str) or ws.cell(row, spec.stock).value is None:
+                continue
+            old = ws.cell(row, spec.comm_pct).value
+            if old is None:
+                continue
+            path, rate = rate_for(name, rates, model)
+            if abs(float(old) - rate) > 1e-9:
+                changed.append(
+                    {
+                        "sheet": spec.title,
+                        "row": row,
+                        "name": name,
+                        "category": path,
+                        "old": float(old),
+                        "new": rate,
+                    }
+                )
+            ws.cell(row, spec.comm_pct).value = rate
+    return changed
+
+
+def build_rates_sheet(wb, wb_values) -> list[list]:
+    """Лист «Тарифы»: какая категория и ставка Маркета подставлена каждому SKU."""
+    rates = load_rates()
+    rows: list[list] = [
+        [
+            "Товар",
+            "Категория Яндекс Маркета",
+            "Ставка FBY (лист FBO), %",
+            "Ставка FBS, %",
+            "Было в модели FBO, %",
+            "Было в модели FBS, %",
+        ]
+    ]
+    ws_fbo, ws_fbs = wb_values[FBO.title], wb_values[FBS.title]
+    fbs_old = {
+        ws_fbs.cell(r, FBS.name).value: ws_fbs.cell(r, FBS.comm_pct).value
+        for r in range(FBS.header_row + 1, LAST_ROW + 1)
+    }
+    for row in range(FBO.header_row + 1, LAST_ROW + 1):
+        name = ws_fbo.cell(row, FBO.name).value
+        if not isinstance(name, str) or ws_fbo.cell(row, FBO.stock).value is None:
+            continue
+        path, fby = rate_for(name, rates, "FBY")
+        _, fbs = rate_for(name, rates, "FBS")
+        old_fbo = ws_fbo.cell(row, FBO.comm_pct).value
+        rows.append(
+            [
+                name,
+                path,
+                round(fby * 100, 1),
+                round(fbs * 100, 1),
+                round(float(old_fbo) * 100, 1) if old_fbo else "",
+                round(float(fbs_old.get(name) or 0) * 100, 1) or "",
+            ]
+        )
+    return rows
+
+
+def build_unitka(costs: dict[str, float], wb_values) -> tuple[dict[str, int], list[dict]]:
     """Чистая юнитка в формате Ozon: два листа, все цены живыми формулами.
 
     Отличия от файла клиента: дозаполнены пустые строки и 61 цена на FBS,
@@ -623,8 +701,12 @@ def build_unitka(costs: dict[str, float], wb_values) -> dict[str, int]:
     OUT_UNITKA.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(SRC, OUT_UNITKA)
     wb = openpyxl.load_workbook(OUT_UNITKA, data_only=False)
-    fill_missing(wb, wb_values, costs)
-    stats = {"формул на FBS вместо значений": 0, "хвост пустых строк убран": 0}
+    filled = fill_missing(wb, wb_values, costs)
+    stats = {
+        "ставок по категориям подставлено": len(apply_category_rates(wb)),
+        "формул на FBS вместо значений": 0,
+        "хвост пустых строк убран": 0,
+    }
     for spec in SPECS:
         ws = wb[spec.title]
         if spec is FBS:
@@ -639,7 +721,7 @@ def build_unitka(costs: dict[str, float], wb_values) -> dict[str, int]:
             stats["хвост пустых строк убран"] += ws.max_row - LAST_ROW
             ws.delete_rows(LAST_ROW + 1, ws.max_row - LAST_ROW)
     wb.save(OUT_UNITKA)
-    return stats
+    return stats, filled
 
 
 def build_decisions(summary: list[list], head: list[str]) -> list[list]:
@@ -703,24 +785,24 @@ def main() -> None:
     for p in problems[:10]:
         print("  ", p)
 
-    stats = build_unitka(costs, wb_values)
+    stats, filled = build_unitka(costs, wb_values)
     print(f"записан {OUT_UNITKA.relative_to(ROOT)} — юнитка в формате Ozon: " + ", ".join(
         f"{k} {v}" for k, v in stats.items()
     ))
-
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(SRC, OUT)
-    wb_formulas = openpyxl.load_workbook(OUT, data_only=False)
-    filled = fill_missing(wb_formulas, wb_values, costs)
     done = [f for f in filled if f["status"] == "рассчитано"]
     skipped = [f for f in filled if f["status"] != "рассчитано"]
     print(f"дозаполнено строк: {len(done)}, пропущено: {len(skipped)}")
     for s in skipped:
         print(f"   пропуск {s['sheet']} стр.{s['row']}: {s['status']} — {s['name'][:60]}")
 
+    # Аналитический файл — это та же юнитка плюс листы разбора, чтобы цифры совпадали.
+    shutil.copy(OUT_UNITKA, OUT)
+    wb_formulas = openpyxl.load_workbook(OUT, data_only=False)
+    rates_sheet = build_rates_sheet(wb_formulas, wb_values)
     summary = build_summary(wb_formulas, wb_values, costs)
     decisions = build_decisions(summary[1:], summary[0])
     for title, table, widths, freeze in (
+        ("Тарифы", rates_sheet, (70, 55, 12, 12, 14, 14), "B2"),
         ("Решения FBO", decisions, (7, 70, 9, 11, 15, 15, 15, 15, 13, 42), "C2"),
         ("Сводка", summary, (6, 7, 70, 9, 11, 13, 15, 14, 22, 8, 18, 12, 13, 9, 16, 16, 22), "D2"),
     ):
