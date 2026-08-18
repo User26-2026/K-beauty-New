@@ -1,0 +1,862 @@
+[
+  {
+    "acquiring": 11.78,
+    "offer_id": "dm7dm6",
+    "product_id": 2881287841,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 1178,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        },
+        {
+          "title": "РК.Рассрочка 0-0-6 до 31.01.3031",
+          "value": 6,
+          "date_from": "2025-12-19T11:00:00Z",
+          "date_to": "2026-09-30T19:50:00Z"
+        },
+        {
+          "title": "РК.Рассрочка 0-0-12 до 31.01.2026",
+          "value": 12,
+          "date_from": "2025-12-19T11:00:00Z",
+          "date_to": "2026-09-30T19:50:00Z"
+        },
+        {
+          "title": "Рассрочка BNPL в Казахстане - АБ ТЕСТ",
+          "value": 4,
+          "date_from": "2026-06-21T21:00:00Z",
+          "date_to": "2026-08-28T20:59:00Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 1178,
+      "min_price": 1100,
+      "old_price": 7000,
+      "price": 1200,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 8.62,
+    "offer_id": "dm7dm5",
+    "product_id": 2881287871,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 862,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 862,
+      "min_price": 1100,
+      "old_price": 7000,
+      "price": 1200,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 6.93,
+    "offer_id": "dm7dm9",
+    "product_id": 2881287872,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 1019,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        },
+        {
+          "title": "Максимальный бустинг.",
+          "value": 822,
+          "date_from": "2026-07-07T21:00:00Z",
+          "date_to": "2026-08-04T20:59:59Z"
+        },
+        {
+          "title": "Максимальный бустинг: усиление",
+          "value": 814,
+          "date_from": "2026-07-12T21:00:00Z",
+          "date_to": "2026-08-04T20:59:59Z"
+        },
+        {
+          "title": "Распродажа стока. Август",
+          "value": 693,
+          "date_from": "2026-07-22T21:00:00Z",
+          "date_to": "2026-08-05T20:59:59Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 693,
+      "min_price": 1100,
+      "old_price": 7000,
+      "price": 1200,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 15,
+    "offer_id": "dm7dm12",
+    "product_id": 2881287883,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 1500,
+      "min_price": 1400,
+      "old_price": 7000,
+      "price": 1500,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 6.57,
+    "offer_id": "dm7dm11",
+    "product_id": 2881287920,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 913,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        },
+        {
+          "title": "РК.Рассрочка 0-0-6 до 31.01.3031",
+          "value": 6,
+          "date_from": "2025-12-19T11:00:00Z",
+          "date_to": "2026-09-30T19:50:00Z"
+        },
+        {
+          "title": "РК.Рассрочка 0-0-12 до 31.01.2026",
+          "value": 12,
+          "date_from": "2025-12-19T11:00:00Z",
+          "date_to": "2026-09-30T19:50:00Z"
+        },
+        {
+          "title": "Максимальный бустинг.",
+          "value": 839,
+          "date_from": "2026-07-07T21:00:00Z",
+          "date_to": "2026-08-04T20:59:59Z"
+        },
+        {
+          "title": "Максимальный бустинг: усиление",
+          "value": 830,
+          "date_from": "2026-07-12T21:00:00Z",
+          "date_to": "2026-08-04T20:59:59Z"
+        },
+        {
+          "title": "Распродажа стока. Август",
+          "value": 657,
+          "date_from": "2026-07-22T21:00:00Z",
+          "date_to": "2026-08-05T20:59:59Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 657,
+      "min_price": 1100,
+      "old_price": 7000,
+      "price": 1200,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 8.2,
+    "offer_id": "dm7dm13",
+    "product_id": 2881287925,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 893,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        },
+        {
+          "title": "Максимальный бустинг.",
+          "value": 830,
+          "date_from": "2026-07-07T21:00:00Z",
+          "date_to": "2026-08-04T20:59:59Z"
+        },
+        {
+          "title": "Максимальный бустинг: усиление",
+          "value": 820,
+          "date_from": "2026-07-12T21:00:00Z",
+          "date_to": "2026-08-04T20:59:59Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 820,
+      "min_price": 900,
+      "old_price": 7000,
+      "price": 1000,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 9.03,
+    "offer_id": "dm7dm1",
+    "product_id": 2881287934,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 903,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 903,
+      "min_price": 1100,
+      "old_price": 7000,
+      "price": 1200,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 7.64,
+    "offer_id": "dm7dm3",
+    "product_id": 2881287960,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 764,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        },
+        {
+          "title": "Семплинг в Реф. Программе Ozon x VK Adblogger / май-август/ только 3р №1",
+          "value": 100,
+          "date_from": "2026-05-17T21:00:00Z",
+          "date_to": "2026-09-01T20:59:00Z"
+        },
+        {
+          "title": "Семплинг в Реф. Программе Ozon x VK Adblogger / май-август/ только 3р #2",
+          "value": 100,
+          "date_from": "2026-05-17T21:00:00Z",
+          "date_to": "2026-09-01T20:59:00Z"
+        },
+        {
+          "title": "Семплинг в Реф. Программе Ozon x VK Adblogger / июль 2025  1 промокод - бюджет 5000 ",
+          "value": 100,
+          "date_from": "2026-07-02T21:00:00Z",
+          "date_to": "2026-09-01T20:59:00Z"
+        },
+        {
+          "title": "Семплинг в Реф. Программе Ozon x VK Adblogger / июль 2025 1 промокод - бюджет 5000",
+          "value": 100,
+          "date_from": "2026-07-02T21:00:00Z",
+          "date_to": "2026-09-01T20:59:00Z"
+        },
+        {
+          "title": "Семплинг в Реф. Программе Ozon x VK Adblogger / июль 2025 8 промокодов - бюджет 40000 ",
+          "value": 100,
+          "date_from": "2026-07-02T21:00:00Z",
+          "date_to": "2026-09-01T20:59:00Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 764,
+      "min_price": 1100,
+      "old_price": 7000,
+      "price": 1200,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 8.82,
+    "offer_id": "dm7dm10",
+    "product_id": 2881288008,
+    "volume_weight": 1.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 377,
+      "fbo_direct_flow_trans_min_amount": 89,
+      "fbo_return_flow_amount": 108,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 89,
+      "fbs_direct_flow_trans_max_amount": 377,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 377,
+      "sales_percent_fbo": 47,
+      "sales_percent_fbs": 53,
+      "sales_percent_rfbs": 53,
+      "sales_percent_fbp": 53
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [
+        {
+          "title": "Эластичный бустинг. Без ограничения срока действия",
+          "value": 882,
+          "date_from": "2025-03-19T21:00:44Z",
+          "date_to": "2026-12-31T20:59:59Z"
+        }
+      ],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 882,
+      "min_price": 900,
+      "old_price": 7000,
+      "price": 1000,
+      "retail_price": 0,
+      "vat": 0,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 350
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "ozon_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      },
+      "color_index": "WITHOUT_INDEX",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 25,
+    "offer_id": "Celimax Dual Barrier Creamy Toner",
+    "product_id": 5737542836,
+    "volume_weight": 0.2,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 154,
+      "fbo_direct_flow_trans_min_amount": 67,
+      "fbo_return_flow_amount": 81,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 67,
+      "fbs_direct_flow_trans_max_amount": 154,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 154,
+      "sales_percent_fbo": 41,
+      "sales_percent_fbs": 47,
+      "sales_percent_rfbs": 47,
+      "sales_percent_fbp": 47
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 2500,
+      "min_price": 0,
+      "old_price": 0,
+      "price": 2500,
+      "retail_price": 0,
+      "vat": 0.07,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 724
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 1299,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.48
+      },
+      "ozon_index_data": {
+        "min_price": 628.67,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.75
+      },
+      "color_index": "RED",
+      "self_marketplaces_index_data": {
+        "min_price": 1674,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.33
+      }
+    }
+  },
+  {
+    "acquiring": 25,
+    "offer_id": "ROUND LAB 1025 DOKDO CLEANSER_150ml",
+    "product_id": 5738375811,
+    "volume_weight": 0.3,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 218,
+      "fbo_direct_flow_trans_min_amount": 74,
+      "fbo_return_flow_amount": 89,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 74,
+      "fbs_direct_flow_trans_max_amount": 218,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 218,
+      "sales_percent_fbo": 41,
+      "sales_percent_fbs": 47,
+      "sales_percent_rfbs": 47,
+      "sales_percent_fbp": 47
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 2500,
+      "min_price": 0,
+      "old_price": 0,
+      "price": 2500,
+      "retail_price": 0,
+      "vat": 0.07,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 524
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 946,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.62
+      },
+      "ozon_index_data": {
+        "min_price": 468.78,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.81
+      },
+      "color_index": "RED",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  },
+  {
+    "acquiring": 25,
+    "offer_id": "FARMSTAY COLLAGEN&HYALURONIC ACID ALL-IN ONE",
+    "product_id": 5738658556,
+    "volume_weight": 0.3,
+    "commissions": {
+      "fbo_deliv_to_customer_amount": 25,
+      "fbo_direct_flow_trans_max_amount": 168,
+      "fbo_direct_flow_trans_min_amount": 67,
+      "fbo_return_flow_amount": 81,
+      "fbs_deliv_to_customer_amount": 25,
+      "fbs_direct_flow_trans_min_amount": 67,
+      "fbs_direct_flow_trans_max_amount": 168,
+      "fbs_first_mile_max_amount": 10,
+      "fbs_first_mile_min_amount": 0,
+      "fbs_return_flow_amount": 168,
+      "sales_percent_fbo": 41,
+      "sales_percent_fbs": 47,
+      "sales_percent_rfbs": 47,
+      "sales_percent_fbp": 47
+    },
+    "marketing_actions": {
+      "current_period_from": null,
+      "current_period_to": null,
+      "actions": [],
+      "ozon_actions_exist": false
+    },
+    "price": {
+      "auto_action_enabled": false,
+      "currency_code": "RUB",
+      "marketing_seller_price": 2500,
+      "min_price": 0,
+      "old_price": 0,
+      "price": 2500,
+      "retail_price": 0,
+      "vat": 0.07,
+      "auto_add_to_ozon_actions_list_enabled": true,
+      "net_price": 407
+    },
+    "price_indexes": {
+      "external_index_data": {
+        "min_price": 1602,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.36
+      },
+      "ozon_index_data": {
+        "min_price": 758.25,
+        "min_price_currency": "RUB",
+        "price_index_value": 1.7
+      },
+      "color_index": "RED",
+      "self_marketplaces_index_data": {
+        "min_price": 0,
+        "min_price_currency": "RUB",
+        "price_index_value": 0
+      }
+    }
+  }
+]
