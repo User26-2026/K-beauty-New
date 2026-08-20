@@ -1,5 +1,12 @@
 {
   "balance": 0,
   "net": 1110159,
+  "cashbacks": [
+    {
+      "sum": 73000,
+      "percent": 50,
+      "expiration_date": "2026-08-27T21:00:00Z"
+    }
+  ],
   "currency": "RUB"
 }
