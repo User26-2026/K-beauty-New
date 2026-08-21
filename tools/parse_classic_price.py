@@ -39,8 +39,11 @@ COLUMN_PATTERNS = {
     # Названия: сначала колонки с явной пометкой языка (STRONG_PATTERNS),
     # потом общие подписи. Где обе колонки подписаны одинаково, корейская
     # идет первой, поэтому name_kr проверяется раньше name_en.
-    "name_kr": [r"^product\s*name$", r"^product$", r"^name$"],
-    "name_en": [r"^product\s*name$", r"^product$", r"^name$"],
+    "name_kr": [r"^pro\w*t\s*name$", r"^product$", r"^name$"],
+    "name_en": [
+        r"^pro\w*t\s*name$", r"^product$", r"^name$",
+        r"item\s*description", r"\bname\b",
+    ],
     # LEBELAGE ведет отдельную колонку с русскими названиями — забираем.
     "name_ru": [r"наименование", r"название"],
     "type": [r"^type$", r"^category$", r"product\s*line"],
@@ -53,13 +56,19 @@ COLUMN_PATTERNS = {
     ],
     # Закупку пишут по-разному: supply / unit / просто price (-VAT).
     "supply_krw": [
-        r"supply\s*price", r"fob\s*price", r"공급가", r"distributor\s*price",
+        r"sup\w*ly\w*\s*price", r"fob\s*price", r"공급가", r"distributor\s*price",
         r"unit\s*price", r"^price\s*\(\s*-?\s*vat",
     ],
     "qty_per_box": [r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box", r"^master$"],
     "moq": [r"^moq", r"moq\s*qty"],
     "shelf_life": [r"shelf\s*life", r"유통기한"],
     "status": [r"^status$", r"^remark$", r"^비고$"],
+}
+
+# Колонки, которые нельзя отдавать полю, даже если шапка подошла.
+EXCLUDE_PATTERNS = {
+    "msrp_krw": [r"\busd\b", r"\beur\b", r"\$"],
+    "supply_krw": [r"\busd\b", r"\beur\b", r"\$"],
 }
 
 # Явные языковые подписи — их разбираем до общих шаблонов названия.
@@ -125,10 +134,13 @@ def map_columns(header):
             for field, patterns in patterns_set.items():
                 if field in mapping:
                     continue
-                if any(re.search(p, title) for p in patterns):
-                    mapping[field] = col_idx
-                    used.add(col_idx)
-                    break
+                if not any(re.search(p, title) for p in patterns):
+                    continue
+                if any(re.search(p, title) for p in EXCLUDE_PATTERNS.get(field, [])):
+                    continue
+                mapping[field] = col_idx
+                used.add(col_idx)
+                break
     return mapping
 
 
