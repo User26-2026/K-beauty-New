@@ -34,14 +34,15 @@ IMPORT_MULTIPLIER = 1.4
 COLUMN_PATTERNS = {
     # 구분/Division в прайсах — порядковый номер строки, не бренд.
     "brand": [r"^brand$", r"^бренд$"],
-    "code": [r"sku\s*no", r"^code$", r"sap\s*code", r"^артикул$"],
+    "code": [r"sku\s*no", r"^code$", r"product\s*code", r"sap\s*code", r"^артикул$"],
     "barcode": [r"bar\s*code", r"barcode", r"바코드"],
-    "name_kr": [r"\bname\b.*\b(kr|kor|korean)\b", r"name.*국문", r"제품명"],
-    "name_en": [r"\bname\b.*\b(en|eng|english)\b", r"^product\s*name$", r"^name$"],
+    "name_kr": [r"\bname\b.*\b(ko|kr|kor|korean)\b", r"국문", r"제품명", r"품명"],
+    "name_en": [r"\bname\b.*\b(en|eng|english)\b", r"영문", r"^product\s*name$", r"^name$"],
     "type": [r"^type$", r"^category$", r"product\s*line"],
-    "volume": [r"^vol", r"volume", r"^size$"],
-    "msrp_krw": [r"msrp", r"retail\s*price", r"regular\s*price\s*\(krw", r"소비자"],
-    "supply_krw": [r"supply\s*price", r"fob\s*price", r"공급가"],
+    "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량"],
+    "msrp_krw": [r"msrp", r"^retail\b", r"retail\s*price", r"regular\s*price\s*\(krw", r"소비자"],
+    # Закупку пишут по-разному: supply / unit / просто price (-VAT).
+    "supply_krw": [r"supply\s*price", r"fob\s*price", r"공급가", r"unit\s*price", r"^price\s*\(\s*-?\s*vat"],
     "qty_per_box": [r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box", r"^master$"],
     "moq": [r"^moq", r"moq\s*qty"],
     "shelf_life": [r"shelf\s*life", r"유통기한"],
@@ -79,7 +80,8 @@ def merge_header(rows, header_idx):
     if header_idx + 1 >= len(rows):
         return top
     below = [norm(c) for c in rows[header_idx + 1]]
-    hits = sum(1 for c in below if c and any(h in c for h in HEADER_HINTS + ["price", "weight", "size", "cbm"]))
+    extra = ["price", "weight", "size", "cbm", "국문", "영문", "korean", "english"]
+    hits = sum(1 for c in below if c and any(h in c for h in HEADER_HINTS + extra))
     if hits < 2:
         return top
     return [(t + " " + b).strip() if not t else t for t, b in zip(top, below)]
@@ -122,10 +124,10 @@ def clean_text(value):
 
 
 def brand_from_filename(path):
-    name = os.path.basename(path)
-    name = re.sub(r"^classic_", "", name)
-    name = re.split(r"_PRICE[_ ]?LIST|_\d{2}\.\d{2}", name)[0]
-    return name.replace("_", " ").strip().upper()
+    """Бренд из имени файла. В именах встречаются опечатки вида PRICE_LEST."""
+    name = re.sub(r"^classic_", "", os.path.basename(path))
+    name = re.split(r"_?PRICE[_ ]?L[EI]S?T|_\d{2}\.\d{2}", name, flags=re.I)[0]
+    return name.replace("_", " ").strip(" ._").upper()
 
 
 def parse_sheet(ws, source, sheet_name, fallback_brand):
@@ -180,6 +182,40 @@ def parse_sheet(ws, source, sheet_name, fallback_brand):
     return records, None
 
 
+def dedupe(records, notes):
+    """Часть поставщиков дублирует каталог на листах 국문 и English.
+
+    Совпадение ищем по артикулу, а если его нет — по паре штрихкод + название.
+    Оставляем первую строку, но если у дубля другая закупочная цена, это не
+    техническая копия, а второй уровень цен — говорим об этом отдельно.
+    """
+    unique, seen, conflicts = [], {}, []
+    for rec in records:
+        key = rec["Артикул"] or (rec["Штрихкод"], rec["Название EN"])
+        if not (rec["Артикул"] or rec["Штрихкод"]):
+            unique.append(rec)
+            continue
+        if key in seen:
+            kept = seen[key]
+            if kept["Закупка, KRW"] != rec["Закупка, KRW"]:
+                conflicts.append((kept, rec))
+            continue
+        seen[key] = rec
+        unique.append(rec)
+
+    dropped = len(records) - len(unique)
+    if dropped:
+        notes.append(f"убрано дублей между листами: {dropped}")
+    if conflicts:
+        kept, other = conflicts[0]
+        notes.append(
+            f"РАЗНЫЕ ЦЕНЫ на листах ({len(conflicts)} SKU), взят лист "
+            f"'{kept['Лист']}': напр. {kept['Артикул'] or kept['Штрихкод']} — "
+            f"{kept['Закупка, KRW']:.0f} против {other['Закупка, KRW']:.0f} KRW"
+        )
+    return unique, notes
+
+
 def parse_file(path):
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     fallback_brand = brand_from_filename(path)
@@ -190,7 +226,9 @@ def parse_file(path):
         if problem:
             notes.append(f"{sheet_name}: {problem}")
     wb.close()
-    return records, notes
+
+    unique, notes = dedupe(records, notes)
+    return unique, notes
 
 
 def main(paths, rate):
