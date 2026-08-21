@@ -16,9 +16,15 @@
 - `data/unit_economics/Celimax_unit_model.xlsx` — основной файл юнит-экономики.
 - `data/stock_costs/ОСТАТКИ_КОРЕЯ_03.06.xlsx` — актуальная себестоимость, брать желтую колонку `Себестоимость по последнему приходу`.
 - `data/stock_costs/Остатки_25.05.2026_priorities.xlsx` — старый файл с цветами приоритетов.
-- `data/price_lists/` — прайсы брендов, если доступны.
-- `data/price_lists/classic/` — прайсы поставщика Классик (Корея), правила
-  именования и расчета себестоимости — в `data/price_lists/classic/README.md`.
+- `data/price_lists/` — прайсы, полученные от брендов напрямую.
+- `data/price_lists/<поставщик>/` — по папке на каждого поставщика-посредника.
+  Сейчас есть `classic/` (Классик, Корея); правила именования и расчета
+  себестоимости — в `data/price_lists/classic/README.md`.
+- `tools/import_uploads.py` — переносит загруженные прайсы в папку поставщика.
+- `tools/parse_price_lists.py` — сводит прайсы всех поставщиков в
+  `outputs/prices_normalized.xlsx` и считает себестоимость.
+- `tools/compare_suppliers.py` — ищет один товар у разных поставщиков и
+  показывает, где дешевле: `outputs/supplier_price_comparison.xlsx`.
 - `workspace/wb_kbeauty_launch/` — PDF дорожной карты и генератор PDF.
 - `workspace/wb_audit/` — отчеты по текущему кабинету, складам, хранению, ИЛ/ИРП, упущенной выручке.
 - `workspace/wb_product_research/` — исследования кандидатов и промежуточные файлы по подбору товаров.

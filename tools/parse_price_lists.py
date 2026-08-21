@@ -1,7 +1,8 @@
-"""Разбор прайсов поставщика Классик в единую таблицу.
+"""Разбор прайсов поставщиков в единую таблицу.
 
-Прайсы приходят от разных брендов с разной версткой: заголовок может быть
-на любой из первых строк, часть шапок двухэтажные, названия колонок пишутся
+Каждый поставщик лежит в своей папке внутри data/price_lists. Прайсы внутри
+приходят от разных брендов с разной версткой: заголовок может быть на любой
+из первых строк, часть шапок двухэтажные, названия колонок пишутся
 по-разному. Скрипт сам находит строку заголовка и раскладывает данные в
 общий набор полей.
 
@@ -9,9 +10,10 @@
     себестоимость_руб = закупка_KRW * курс * 1.4
 
 Запуск:
-    python3 tools/parse_classic_price.py                    # все прайсы Классика
-    python3 tools/parse_classic_price.py --rate 0.0598      # свой курс воны
-    python3 tools/parse_classic_price.py путь.xlsx ...      # конкретные файлы
+    python3 tools/parse_price_lists.py                    # все поставщики
+    python3 tools/parse_price_lists.py --supplier classic # один поставщик
+    python3 tools/parse_price_lists.py --rate 0.0598      # свой курс воны
+    python3 tools/parse_price_lists.py путь.xlsx ...      # конкретные файлы
 """
 
 import argparse
@@ -22,8 +24,28 @@ import re
 import openpyxl
 import pandas as pd
 
-PRICE_DIR = "data/price_lists/classic"
+PRICE_ROOT = "data/price_lists"
 OUT_DIR = "outputs"
+
+# Имя папки поставщика -> как называем его в отчетах. Файлы, лежащие прямо
+# в price_lists, — это прайсы, полученные от брендов напрямую.
+SUPPLIERS = {"classic": "Классик", "price_lists": "Прямой прайс бренда"}
+
+
+def supplier_dirs():
+    """Папки поставщиков: сам price_lists и любая подпапка с прайсами внутри."""
+    found = []
+    if glob.glob(os.path.join(PRICE_ROOT, "*.xls*")):
+        found.append(PRICE_ROOT)
+    for path in sorted(glob.glob(os.path.join(PRICE_ROOT, "*"))):
+        if os.path.isdir(path) and glob.glob(os.path.join(path, "*.xls*")):
+            found.append(path)
+    return found
+
+
+def supplier_name(path):
+    key = os.path.basename(path.rstrip("/"))
+    return SUPPLIERS.get(key, key.replace("_", " ").title())
 
 # Курс ЦБ, рублей за 1 вону. Обновляем на дату расчета через --rate.
 KRW_RUB = 0.058
@@ -191,7 +213,7 @@ def brand_from_filename(path):
     return name.replace("_", " ").strip(" ._").upper()
 
 
-def parse_sheet(ws, source, sheet_name, fallback_brand):
+def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
     header_idx = find_header_row(rows)
     if header_idx is None:
@@ -222,7 +244,10 @@ def parse_sheet(ws, source, sheet_name, fallback_brand):
         # Колонку без языка в шапке могли занять под латиницу — это название EN.
         if not name_en and not re.search(f"[{KOREAN}]", name_kr):
             name_en, name_kr = name_kr, ""
-        for candidate in (name_en, name_kr):
+        # Разносим языки, только если английского названия еще нет или в нем
+        # оказался корейский: иначе затрем уже правильное название объемом.
+        needs_split = not name_en or bool(re.search(f"[{KOREAN}]", name_en))
+        for candidate in (name_en, name_kr) if needs_split else ():
             latin, korean = split_languages(candidate)
             if not (latin and korean):
                 continue
@@ -235,6 +260,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand):
         last_brand = brand  # в прайсах бренд ставят только в первой строке блока
 
         records.append({
+            "Поставщик": supplier,
             "Файл": os.path.basename(source),
             "Лист": sheet_name,
             "Бренд": brand,
@@ -301,12 +327,12 @@ def pick_sheets(sheet_names):
     return sheets
 
 
-def parse_file(path):
+def parse_file(path, supplier):
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     fallback_brand = brand_from_filename(path)
     records, notes = [], []
     for sheet_name in pick_sheets(wb.sheetnames):
-        found, problem = parse_sheet(wb[sheet_name], path, sheet_name, fallback_brand)
+        found, problem = parse_sheet(wb[sheet_name], path, sheet_name, fallback_brand, supplier)
         records.extend(found)
         if problem:
             notes.append(f"{sheet_name}: {problem}")
@@ -316,15 +342,32 @@ def parse_file(path):
     return unique, notes
 
 
-def main(paths, rate):
-    if not paths:
-        paths = sorted(glob.glob(os.path.join(PRICE_DIR, "*.xlsx")))
+def main(paths, rate, only_supplier):
+    """Разбираем прайсы и складываем в одну таблицу по всем поставщикам."""
+    if paths:
+        jobs = [(p, supplier_name(os.path.dirname(p))) for p in paths]
+    else:
+        dirs = supplier_dirs()
+        if only_supplier:
+            dirs = [d for d in dirs if os.path.basename(d) == only_supplier]
+            if not dirs:
+                print(f"Поставщик {only_supplier} не найден в {PRICE_ROOT}")
+                return
+        jobs = [
+            (path, supplier_name(d))
+            for d in dirs
+            for path in sorted(glob.glob(os.path.join(d, "*.xls*")))
+        ]
 
     all_records = []
-    print(f"{'Файл':<52} {'SKU':>5}  Замечания")
-    print("-" * 92)
-    for path in paths:
-        records, notes = parse_file(path)
+    current = None
+    for path, supplier in jobs:
+        if supplier != current:
+            current = supplier
+            print(f"\n=== {supplier} ===")
+            print(f"{'Файл':<52} {'SKU':>5}  Замечания")
+            print("-" * 92)
+        records, notes = parse_file(path, supplier)
         all_records.extend(records)
         print(f"{os.path.basename(path):<52} {len(records):>5}  {'; '.join(notes)}")
 
@@ -339,9 +382,10 @@ def main(paths, rate):
     df["Курс KRW"] = rate
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    out_path = os.path.join(OUT_DIR, "classic_prices_normalized.xlsx")
+    out_path = os.path.join(OUT_DIR, "prices_normalized.xlsx")
     df.to_excel(out_path, index=False)
-    print(f"\nВсего SKU: {len(df)}   Брендов: {df['Бренд'].nunique()}")
+    print(f"\nВсего SKU: {len(df)}   Брендов: {df['Бренд'].nunique()}"
+          f"   Поставщиков: {df['Поставщик'].nunique()}")
     print(f"Курс: {rate} руб/вона, множитель импорта {IMPORT_MULTIPLIER}")
     print(f"Сохранено: {out_path}")
 
@@ -350,5 +394,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="*", help="конкретные файлы прайсов")
     parser.add_argument("--rate", type=float, default=KRW_RUB, help="курс рублей за 1 вону")
+    parser.add_argument("--supplier", help="имя папки поставщика в data/price_lists")
     ns = parser.parse_args()
-    main(ns.paths, ns.rate)
+    main(ns.paths, ns.rate, ns.supplier)
