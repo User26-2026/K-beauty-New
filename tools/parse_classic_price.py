@@ -45,7 +45,12 @@ COLUMN_PATTERNS = {
     "name_ru": [r"наименование", r"название"],
     "type": [r"^type$", r"^category$", r"product\s*line"],
     "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량"],
-    "msrp_krw": [r"msrp", r"^retail\b", r"retail\s*price", r"regular\s*price\s*\(krw", r"소비자"],
+    "msrp_krw": [
+        r"msrp", r"^srp\b", r"^retail\b", r"retail\s*price", r"list\s*price",
+        r"consumer\s*price", r"regular\s*price\s*\(krw",
+        # Корейские подписи розничной цены: 소비자가 / 정상소가 / 기준가.
+        r"소비자", r"정상소가", r"기준가",
+    ],
     # Закупку пишут по-разному: supply / unit / просто price (-VAT).
     "supply_krw": [
         r"supply\s*price", r"fob\s*price", r"공급가", r"distributor\s*price",
