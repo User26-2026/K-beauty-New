@@ -36,17 +36,34 @@ COLUMN_PATTERNS = {
     "brand": [r"^brand$", r"^бренд$"],
     "code": [r"sku\s*no", r"^code$", r"product\s*code", r"sap\s*code", r"^артикул$"],
     "barcode": [r"bar\s*code", r"barcode", r"바코드"],
-    "name_kr": [r"\bname\b.*\b(ko|kr|kor|korean)\b", r"국문", r"제품명", r"품명"],
-    "name_en": [r"\bname\b.*\b(en|eng|english)\b", r"영문", r"^product\s*name$", r"^name$"],
+    # Названия: сначала колонки с явной пометкой языка (STRONG_PATTERNS),
+    # потом общие подписи. Где обе колонки подписаны одинаково, корейская
+    # идет первой, поэтому name_kr проверяется раньше name_en.
+    "name_kr": [r"^product\s*name$", r"^product$", r"^name$"],
+    "name_en": [r"^product\s*name$", r"^product$", r"^name$"],
+    # LEBELAGE ведет отдельную колонку с русскими названиями — забираем.
+    "name_ru": [r"наименование", r"название"],
     "type": [r"^type$", r"^category$", r"product\s*line"],
     "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량"],
     "msrp_krw": [r"msrp", r"^retail\b", r"retail\s*price", r"regular\s*price\s*\(krw", r"소비자"],
     # Закупку пишут по-разному: supply / unit / просто price (-VAT).
-    "supply_krw": [r"supply\s*price", r"fob\s*price", r"공급가", r"unit\s*price", r"^price\s*\(\s*-?\s*vat"],
+    "supply_krw": [
+        r"supply\s*price", r"fob\s*price", r"공급가", r"distributor\s*price",
+        r"unit\s*price", r"^price\s*\(\s*-?\s*vat",
+    ],
     "qty_per_box": [r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box", r"^master$"],
     "moq": [r"^moq", r"moq\s*qty"],
     "shelf_life": [r"shelf\s*life", r"유통기한"],
     "status": [r"^status$", r"^remark$", r"^비고$"],
+}
+
+# Явные языковые подписи — их разбираем до общих шаблонов названия.
+STRONG_PATTERNS = {
+    "name_kr": [r"\bname\b.*\b(ko|kr|kor|korean)\b", r"국문", r"제품명", r"품명"],
+    "name_en": [
+        r"\bname\b.*\b(en|eng|english)\b", r"영문", r"^eng$",
+        r"description.*\b(en|eng|english)\b",
+    ],
 }
 
 # По этим словам ищем саму строку заголовка.
@@ -84,21 +101,29 @@ def merge_header(rows, header_idx):
     hits = sum(1 for c in below if c and any(h in c for h in HEADER_HINTS + extra))
     if hits < 2:
         return top
-    return [(t + " " + b).strip() if not t else t for t, b in zip(top, below)]
+    return [(t + " " + b).strip() for t, b in zip(top, below)]
 
 
 def map_columns(header):
-    """Шапка -> {поле: номер колонки}. Первое совпадение выигрывает."""
-    mapping = {}
-    for col_idx, title in enumerate(header):
-        if not title:
-            continue
-        for field, patterns in COLUMN_PATTERNS.items():
-            if field in mapping:
+    """Шапка -> {поле: номер колонки}.
+
+    Два прохода. Сначала колонки с явной пометкой языка: JIGOTT называет
+    английское название "Description (ENG)", CP1 подписывает языки во втором
+    этаже шапки. Потом общие подписи — там, где AMORE и FLOR DE MAN зовут обе
+    колонки одинаково ("Product Name" / "Product"), первая колонка корейская.
+    """
+    mapping, used = {}, set()
+    for patterns_set in (STRONG_PATTERNS, COLUMN_PATTERNS):
+        for col_idx, title in enumerate(header):
+            if not title or col_idx in used:
                 continue
-            if any(re.search(p, title) for p in patterns):
-                mapping[field] = col_idx
-                break
+            for field, patterns in patterns_set.items():
+                if field in mapping:
+                    continue
+                if any(re.search(p, title) for p in patterns):
+                    mapping[field] = col_idx
+                    used.add(col_idx)
+                    break
     return mapping
 
 
@@ -115,6 +140,25 @@ def to_number(value):
         return float(text)
     except ValueError:
         return None
+
+
+KOREAN = r"\uac00-\ud7a3"
+
+
+def split_languages(text):
+    """Разносит название на английское и корейское.
+
+    Часть поставщиков (FLORODORA, BERGAMO, AMORE, CP1) кладет оба названия
+    в одну ячейку — через перенос строки или просто подряд.
+    """
+    if not text or not re.search(f"[{KOREAN}]", text):
+        return text, ""
+    korean = " ".join(re.findall(f"[{KOREAN}][{KOREAN}\\s]*", text)).strip()
+    latin = " ".join(
+        part.strip() for part in re.split(f"[{KOREAN}]+", text)
+        if re.search(r"[A-Za-z]{2}", part)
+    ).strip()
+    return re.sub(r"\s+", " ", latin), re.sub(r"\s+", " ", korean)
 
 
 def clean_text(value):
@@ -158,6 +202,17 @@ def parse_sheet(ws, source, sheet_name, fallback_brand):
         name_kr = clean_text(cell("name_kr"))
         if not name_en and not name_kr:
             continue
+        # Колонку без языка в шапке могли занять под латиницу — это название EN.
+        if not name_en and not re.search(f"[{KOREAN}]", name_kr):
+            name_en, name_kr = name_kr, ""
+        for candidate in (name_en, name_kr):
+            latin, korean = split_languages(candidate)
+            if not (latin and korean):
+                continue
+            name_en = latin
+            if not re.search(f"[{KOREAN}]", name_kr) or name_kr == candidate:
+                name_kr = korean
+            break
 
         brand = clean_text(cell("brand")) or last_brand
         last_brand = brand  # в прайсах бренд ставят только в первой строке блока
@@ -170,6 +225,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand):
             "Штрихкод": clean_text(cell("barcode")),
             "Название EN": name_en,
             "Название KR": name_kr,
+            "Название RU": clean_text(cell("name_ru")),
             "Тип": clean_text(cell("type")),
             "Объем": clean_text(cell("volume")),
             "MSRP, KRW": to_number(cell("msrp_krw")),
@@ -216,11 +272,23 @@ def dedupe(records, notes):
     return unique, notes
 
 
+def pick_sheets(sheet_names):
+    """Отбираем листы, по которым считать закупку.
+
+    LAGOM дает один каталог дважды: VAT포함 (с НДС) и VAT별도 (без НДС), плюс
+    листы 검산/검수 — внутренняя сверка. Нам нужна цена без НДС.
+    """
+    sheets = [s for s in sheet_names if not re.search(r"검산|검수", s)]
+    if any("별도" in s for s in sheets):
+        sheets = [s for s in sheets if "포함" not in s]
+    return sheets
+
+
 def parse_file(path):
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     fallback_brand = brand_from_filename(path)
     records, notes = [], []
-    for sheet_name in wb.sheetnames:
+    for sheet_name in pick_sheets(wb.sheetnames):
         found, problem = parse_sheet(wb[sheet_name], path, sheet_name, fallback_brand)
         records.extend(found)
         if problem:
