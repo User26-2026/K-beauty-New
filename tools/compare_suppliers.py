@@ -29,11 +29,18 @@ def norm_name(text):
 
 
 def norm_volume(text):
-    """Объем к единому виду: '150 mL' и '150ml' — одно и то же."""
-    match = re.search(r"(\d+[.,]?\d*)\s*(ml|g|мл|г|ea|шт)", str(text), re.I)
+    """Объем к единому виду: '150 mL' и '150ml' — одно и то же.
+
+    Фасовку в наборе учитываем отдельно: '38g*4ea' и '38g' — разные позиции,
+    и сравнивать их цены нельзя.
+    """
+    text = str(text)
+    match = re.search(r"(\d+[.,]?\d*)\s*(ml|g|мл|г|ea|шт)", text, re.I)
     if not match:
         return ""
-    return f"{match.group(1).replace(',', '.')}{match.group(2).lower()}"
+    volume = f"{match.group(1).replace(',', '.')}{match.group(2).lower()}"
+    pack = re.search(r"[*xх]\s*(\d+)\s*(ea|шт|pcs)?", text[match.end():], re.I)
+    return volume + (f"*{pack.group(1)}" if pack else "")
 
 
 def name_similarity(left, right):
@@ -92,6 +99,8 @@ def main(min_diff):
         cheapest, priciest = group.iloc[0], group.iloc[-1]
         diff = (priciest["Закупка, KRW"] - cheapest["Закупка, KRW"]) / priciest["Закупка, KRW"] * 100
         similarity = name_similarity(cheapest["Название EN"], priciest["Название EN"])
+        volumes = {norm_volume(cheapest["Объем"]), norm_volume(priciest["Объем"])}
+        volumes.discard("")
         row = {
             "Ключ": key,
             "Бренд": cheapest["Бренд"],
@@ -106,6 +115,8 @@ def main(min_diff):
             "Выгода, руб": round(priciest["Себестоимость, руб"] - cheapest["Себестоимость, руб"], 2),
             "Товар у второго": priciest["Название EN"],
             "Схожесть названий": None if similarity is None else round(similarity, 2),
+            "Объем у второго": priciest["Объем"],
+            "Разная фасовка": len(volumes) > 1,
         }
         for supplier in suppliers:
             match = group[group["Поставщик"] == supplier]
@@ -116,15 +127,27 @@ def main(min_diff):
     result = result[result["Выгода, %"] >= min_diff]
 
     # Один штрихкод на разных товарах — ошибка в прайсе, а не выгодная цена.
-    suspect = result["Схожесть названий"].notna() & (result["Схожесть названий"] < 0.2)
-    result["Проверить"] = suspect.map({True: "штрихкод у разных товаров", False: ""})
+    # Один штрихкод может стоять на разных товарах или на разной фасовке —
+    # в обоих случаях это не выгодная цена, а несопоставимая пара.
+    bad_name = result["Схожесть названий"].notna() & (result["Схожесть названий"] < 0.2)
+    result["Проверить"] = ""
+    result.loc[result["Разная фасовка"], "Проверить"] = "разная фасовка"
+    result.loc[bad_name, "Проверить"] = "штрихкод у разных товаров"
+    # Разница больше чем вдвое почти всегда означает ошибку в прайсе или
+    # разные единицы измерения — такие позиции идут на ручную сверку.
+    huge = result["Выгода, %"] > 50
+    result.loc[huge & (result["Проверить"] == ""), "Проверить"] = "разница больше чем вдвое"
+    suspect = bad_name | result["Разная фасовка"] | huge
     clean = result[~suspect]
 
     out_path = os.path.join(OUT_DIR, "supplier_price_comparison.xlsx")
     result.to_excel(out_path, index=False)
 
     print(f"\nПозиций с разницей от {min_diff}%: {len(result)}"
-          f"   из них сомнительных по штрихкоду: {int(suspect.sum())}")
+          f"   несопоставимых пар: {int(suspect.sum())}"
+          f" (чужой штрихкод {int(bad_name.sum())}, разная фасовка"
+          f" {int(result['Разная фасовка'].sum())},"
+          f" разница вдвое {int(huge.sum())})")
     if len(clean):
         print("\nКто чаще дешевле:")
         print(clean["Дешевле у"].value_counts().to_string())

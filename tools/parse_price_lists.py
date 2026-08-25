@@ -23,13 +23,18 @@ import re
 
 import openpyxl
 import pandas as pd
+import xlrd
 
 PRICE_ROOT = "data/price_lists"
 OUT_DIR = "outputs"
 
 # Имя папки поставщика -> как называем его в отчетах. Файлы, лежащие прямо
 # в price_lists, — это прайсы, полученные от брендов напрямую.
-SUPPLIERS = {"classic": "Классик", "price_lists": "Прямой прайс бренда"}
+SUPPLIERS = {
+    "classic": "Классик",
+    "ge_global": "G&E Global",
+    "price_lists": "Прямой прайс бренда",
+}
 
 
 def supplier_dirs():
@@ -78,7 +83,8 @@ COLUMN_PATTERNS = {
     ],
     # Закупку пишут по-разному: supply / unit / просто price (-VAT).
     "supply_krw": [
-        r"sup\w*ly\w*\s*price", r"fob\s*price", r"공급가", r"distributor\s*price",
+        r"sup\w*ly\w*\s*price", r"wholesale\s*price", r"fob\s*price", r"공급가",
+        r"distributor\s*price",
         r"unit\s*price", r"^price\s*\(\s*-?\s*vat",
     ],
     "qty_per_box": [r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box", r"^master$"],
@@ -95,11 +101,18 @@ EXCLUDE_PATTERNS = {
 
 # Явные языковые подписи — их разбираем до общих шаблонов названия.
 STRONG_PATTERNS = {
-    "name_kr": [r"\bname\b.*\b(ko|kr|kor|korean)\b", r"국문", r"제품명", r"품명"],
+    "name_kr": [
+        r"\bname\b.*\b(ko|kr|kor|korean)\b", r"^korean$",
+        r"국문", r"한글명", r"제품명", r"품명",
+    ],
     "name_en": [
-        r"\bname\b.*\b(en|eng|english)\b", r"영문", r"^eng$",
+        r"\bname\b.*\b(en|eng|english)\b", r"^eng$", r"^english$", r"영문",
         r"description.*\b(en|eng|english)\b",
     ],
+}
+
+FALLBACK_PATTERNS = {
+    "supply_krw": [r"supply\s*rate"],
 }
 
 # По этим словам ищем саму строку заголовка.
@@ -113,7 +126,7 @@ def norm(value):
     """Текст ячейки в нижнем регистре, переносы строк схлопнуты в пробел."""
     if value is None:
         return ""
-    return re.sub(r"\s+", " ", str(value)).strip().lower()
+    return re.sub(r"\s+", " ", str(value).replace("_", " ")).strip().lower()
 
 
 def find_header_row(rows, limit=12):
@@ -149,7 +162,7 @@ def map_columns(header):
     колонки одинаково ("Product Name" / "Product"), первая колонка корейская.
     """
     mapping, used = {}, set()
-    for patterns_set in (STRONG_PATTERNS, COLUMN_PATTERNS):
+    for patterns_set in (STRONG_PATTERNS, COLUMN_PATTERNS, FALLBACK_PATTERNS):
         for col_idx, title in enumerate(header):
             if not title or col_idx in used:
                 continue
@@ -207,9 +220,16 @@ def clean_text(value):
 
 
 def brand_from_filename(path):
-    """Бренд из имени файла. В именах встречаются опечатки вида PRICE_LEST."""
-    name = re.sub(r"^classic_", "", os.path.basename(path))
+    """Бренд из имени файла.
+
+    Убираем префикс папки поставщика, слова PRICE LIST (встречаются опечатки
+    вида PRICE_LEST) и дату в конце — у G&E Global она идет как _2608.
+    """
+    folder = os.path.basename(os.path.dirname(path))
+    name = os.path.splitext(os.path.basename(path))[0]
+    name = re.sub(rf"^{re.escape(folder)}_", "", name)
     name = re.split(r"_?PRICE[_ ]?L[EI]S?T|_\d{2}\.\d{2}", name, flags=re.I)[0]
+    name = re.sub(r"_\d{4}$", "", name)
     return name.replace("_", " ").strip(" ._").upper()
 
 
@@ -327,8 +347,43 @@ def pick_sheets(sheet_names):
     return sheets
 
 
+class LegacySheet:
+    """Лист старого .xls в том же виде, что дает openpyxl."""
+
+    def __init__(self, sheet):
+        self._sheet = sheet
+        self.max_row = sheet.nrows
+        self.max_column = sheet.ncols
+
+    def iter_rows(self, min_row=1, max_row=None, values_only=True):
+        last = min(max_row or self.max_row, self.max_row)
+        for index in range(min_row - 1, last):
+            yield tuple(cell.value if cell.value != "" else None
+                        for cell in self._sheet.row(index))
+
+
+class LegacyWorkbook:
+    """Книга старого .xls: G&E Global присылает часть прайсов в этом формате."""
+
+    def __init__(self, path):
+        self._book = xlrd.open_workbook(path)
+        self.sheetnames = self._book.sheet_names()
+
+    def __getitem__(self, name):
+        return LegacySheet(self._book.sheet_by_name(name))
+
+    def close(self):
+        self._book.release_resources()
+
+
+def open_workbook(path):
+    if path.lower().endswith(".xls"):
+        return LegacyWorkbook(path)
+    return openpyxl.load_workbook(path, read_only=True, data_only=True)
+
+
 def parse_file(path, supplier):
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    wb = open_workbook(path)
     fallback_brand = brand_from_filename(path)
     records, notes = [], []
     for sheet_name in pick_sheets(wb.sheetnames):

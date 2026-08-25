@@ -3,15 +3,18 @@
 Из имени файла убираем служебный хеш и хвостовые подчеркивания, добавляем
 префикс с именем поставщика. Уже перенесенные файлы пропускаем.
 
+Кириллица в именах загруженных файлов часто превращается в подчеркивания —
+их убираем.
+
 Запуск:
-    python3 tools/import_uploads.py <папка_загрузок> <поставщик>
+    python3 tools/import_uploads.py <поставщик> <папка_или_файл> [...]
 """
 
+import argparse
 import glob
 import os
 import re
 import shutil
-import sys
 
 PRICE_ROOT = "data/price_lists"
 
@@ -19,15 +22,27 @@ PRICE_ROOT = "data/price_lists"
 def clean_name(filename, supplier):
     name = re.sub(r"^[0-9a-f]{8}-", "", filename)   # служебный хеш загрузки
     name = re.sub(r"_+(\.xlsx|\.xls|\.csv)$", r"\1", name)
-    return f"{supplier}_" + re.sub(r"_+", "_", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+    return f"{supplier}_{name}"
 
 
-def main(src_dir, supplier):
+def collect(paths):
+    """Разворачиваем папки в список файлов прайсов, файлы берем как есть."""
+    files = []
+    for path in paths:
+        if os.path.isdir(path):
+            files += glob.glob(os.path.join(path, "*.xls*"))
+            files += glob.glob(os.path.join(path, "*.csv"))
+        else:
+            files.append(path)
+    return sorted(set(files))
+
+
+def main(supplier, paths):
     dest = os.path.join(PRICE_ROOT, supplier)
     os.makedirs(dest, exist_ok=True)
     added = 0
-    sources = glob.glob(os.path.join(src_dir, "*.xls*")) + glob.glob(os.path.join(src_dir, "*.csv"))
-    for path in sorted(sources):
+    for path in collect(paths):
         target = os.path.join(dest, clean_name(os.path.basename(path), supplier))
         if os.path.exists(target):
             continue
@@ -39,6 +54,8 @@ def main(src_dir, supplier):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("Запуск: python3 tools/import_uploads.py <папка_загрузок> <поставщик>")
-    main(sys.argv[1], sys.argv[2])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("supplier", help="имя папки поставщика в data/price_lists")
+    parser.add_argument("paths", nargs="+", help="папка загрузок или конкретные файлы")
+    ns = parser.parse_args()
+    main(ns.supplier, ns.paths)
