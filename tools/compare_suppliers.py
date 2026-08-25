@@ -133,11 +133,12 @@ def main(min_diff):
     result["Проверить"] = ""
     result.loc[result["Разная фасовка"], "Проверить"] = "разная фасовка"
     result.loc[bad_name, "Проверить"] = "штрихкод у разных товаров"
-    # Разница больше чем вдвое почти всегда означает ошибку в прайсе или
-    # разные единицы измерения — такие позиции идут на ручную сверку.
+    # Крупная разница бывает и настоящей: по MEDI-PEEL RED LACTO SUN SCREEN
+    # расхождение в 57% подтвердилось. Поэтому такие позиции остаются в
+    # рейтинге, но помечаются на сверку с поставщиком.
     huge = result["Выгода, %"] > 50
-    result.loc[huge & (result["Проверить"] == ""), "Проверить"] = "разница больше чем вдвое"
-    suspect = bad_name | result["Разная фасовка"] | huge
+    result.loc[huge & (result["Проверить"] == ""), "Проверить"] = "крупная разница, сверить"
+    suspect = bad_name | result["Разная фасовка"]
     clean = result[~suspect]
 
     out_path = os.path.join(OUT_DIR, "supplier_price_comparison.xlsx")
@@ -146,8 +147,8 @@ def main(min_diff):
     print(f"\nПозиций с разницей от {min_diff}%: {len(result)}"
           f"   несопоставимых пар: {int(suspect.sum())}"
           f" (чужой штрихкод {int(bad_name.sum())}, разная фасовка"
-          f" {int(result['Разная фасовка'].sum())},"
-          f" разница вдвое {int(huge.sum())})")
+          f" {int(result['Разная фасовка'].sum())});"
+          f" помечено на сверку по величине разницы: {int(huge.sum())}")
     if len(clean):
         print("\nКто чаще дешевле:")
         print(clean["Дешевле у"].value_counts().to_string())
