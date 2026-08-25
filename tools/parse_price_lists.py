@@ -70,7 +70,8 @@ COLUMN_PATTERNS = {
     "name_kr": [r"^pro\w*t\s*name$", r"^product$", r"^name$"],
     "name_en": [
         r"^pro\w*t\s*name$", r"^product$", r"^name$",
-        r"item\s*description", r"\bname\b",
+        # GlowBeauty подписывает колонку названия как Product list.
+        r"^product\s*list$", r"item\s*description", r"\bname\b",
     ],
     # LEBELAGE ведет отдельную колонку с русскими названиями — забираем.
     "name_ru": [r"наименование", r"название"],
