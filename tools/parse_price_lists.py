@@ -33,6 +33,7 @@ OUT_DIR = "outputs"
 SUPPLIERS = {
     "classic": "Классик",
     "ge_global": "G&E Global",
+    "glowbeauty": "GlowBeauty",
     "price_lists": "Прямой прайс бренда",
 }
 
