@@ -32,6 +32,9 @@
 - `tools/price_unit.py` — определяет единицу цены: за штуку или за набор.
 - `tools/check_price_units.py` — ищет позиции, где поставщики понимают
   единицу цены по-разному: `outputs/price_unit_check.xlsx`.
+- `tools/build_registry.py` — собирает РЕЕСТР ЦЕН по структуре инструкции
+  по закупкам (колонки A-Q): `outputs/registry_prices.xlsx` и `.csv`.
+  CSV идет в проект Claude, сырые прайсы туда не грузим.
 
 ## Единица цены
 
