@@ -63,7 +63,8 @@ def build(brand, markup):
         "Qty per box": dearest["Шт/короб"],
         "Price, KRW": [round_up(p * (1 + markup / 100)) for p in dearest["Закупка, KRW"]],
     })
-    return out.sort_values(["Brand", "Product name"]).reset_index(drop=True)
+    # Сортировка по цене вниз: дорогие позиции покупатель видит первыми.
+    return out.sort_values("Price, KRW", ascending=False).reset_index(drop=True)
 
 
 def write_excel(table, path, markup, brand):
