@@ -25,6 +25,8 @@ import openpyxl
 import pandas as pd
 import xlrd
 
+from price_unit import detect as detect_price_unit
+
 PRICE_ROOT = "data/price_lists"
 OUT_DIR = "outputs"
 
@@ -281,6 +283,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
         brand = clean_text(cell("brand")) or last_brand
         last_brand = brand  # в прайсах бренд ставят только в первой строке блока
 
+        unit, per_pack = detect_price_unit(clean_text(cell("volume")), name_en or name_kr)
         records.append({
             "Поставщик": supplier,
             "Файл": os.path.basename(source),
@@ -293,6 +296,8 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
             "Название RU": clean_text(cell("name_ru")),
             "Тип": clean_text(cell("type")),
             "Объем": clean_text(cell("volume")),
+            "Единица цены": unit,
+            "Штук в упаковке": per_pack,
             "MSRP, KRW": to_number(cell("msrp_krw")),
             "Закупка, KRW": supply,
             "Шт/короб": to_number(cell("qty_per_box")),
@@ -435,7 +440,11 @@ def main(paths, rate, only_supplier):
     df = pd.DataFrame(all_records)
     # Наценка поставщика к рекомендованной рознице — грубый ориентир по марже.
     df["MSRP/Закупка"] = (df["MSRP, KRW"] / df["Закупка, KRW"]).round(2)
+    # Цену набора делим на число штук: сравнивать можно только штуку со штукой.
+    per_pack = df["Штук в упаковке"].where(df["Единица цены"] == "за набор").fillna(1)
+    df["Цена за штуку, KRW"] = (df["Закупка, KRW"] / per_pack).round(2)
     df["Себестоимость, руб"] = (df["Закупка, KRW"] * rate * IMPORT_MULTIPLIER).round(2)
+    df["Себестоимость штуки, руб"] = (df["Цена за штуку, KRW"] * rate * IMPORT_MULTIPLIER).round(2)
     df["Курс KRW"] = rate
 
     os.makedirs(OUT_DIR, exist_ok=True)

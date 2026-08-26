@@ -82,7 +82,7 @@ def main(min_diff):
     df = df[df["Ключ"].notna()]
 
     # У одного поставщика товар может встретиться дважды — берем дешевле.
-    best = (df.sort_values("Закупка, KRW")
+    best = (df.sort_values("Цена за штуку, KRW")
               .groupby(["Ключ", "Поставщик"], as_index=False)
               .first())
 
@@ -95,28 +95,40 @@ def main(min_diff):
 
     rows = []
     for key, group in overlap.groupby("Ключ"):
-        group = group.sort_values("Закупка, KRW")
+        # Сравниваем цену за штуку: у одного поставщика это может быть набор.
+        group = group.sort_values("Цена за штуку, KRW")
         cheapest, priciest = group.iloc[0], group.iloc[-1]
-        diff = (priciest["Закупка, KRW"] - cheapest["Закупка, KRW"]) / priciest["Закупка, KRW"] * 100
+        diff = ((priciest["Цена за штуку, KRW"] - cheapest["Цена за штуку, KRW"])
+                / priciest["Цена за штуку, KRW"] * 100)
         similarity = name_similarity(cheapest["Название EN"], priciest["Название EN"])
-        volumes = {norm_volume(cheapest["Объем"]), norm_volume(priciest["Объем"])}
-        volumes.discard("")
+        # Фасовка сопоставима, только если совпали и единица цены, и число
+        # штук в упаковке. Иначе делить цену на штуки нельзя: неизвестно,
+        # относится ли цена второго поставщика к той же упаковке.
+        packs = {(cheapest["Единица цены"], cheapest["Штук в упаковке"]),
+                 (priciest["Единица цены"], priciest["Штук в упаковке"])}
+        same_pack = len({(u, 0 if pd.isna(n) else n) for u, n in packs}) == 1
         row = {
             "Ключ": key,
             "Бренд": cheapest["Бренд"],
             "Товар": cheapest["Название EN"],
             "Объем": cheapest["Объем"],
             "Дешевле у": cheapest["Поставщик"],
-            "Цена, KRW": cheapest["Закупка, KRW"],
-            "Себестоимость, руб": cheapest["Себестоимость, руб"],
+            "Цена за шт, KRW": cheapest["Цена за штуку, KRW"],
+            "Цена в прайсе, KRW": cheapest["Закупка, KRW"],
+            "Единица": cheapest["Единица цены"],
+            "Себестоимость штуки, руб": cheapest["Себестоимость штуки, руб"],
             "Дороже у": priciest["Поставщик"],
-            "Цена дороже, KRW": priciest["Закупка, KRW"],
+            "Цена за шт дороже, KRW": priciest["Цена за штуку, KRW"],
+            "Единица у второго": priciest["Единица цены"],
             "Выгода, %": round(diff, 1),
-            "Выгода, руб": round(priciest["Себестоимость, руб"] - cheapest["Себестоимость, руб"], 2),
+            "Выгода, руб": round(priciest["Себестоимость штуки, руб"]
+                                 - cheapest["Себестоимость штуки, руб"], 2),
             "Товар у второго": priciest["Название EN"],
             "Схожесть названий": None if similarity is None else round(similarity, 2),
             "Объем у второго": priciest["Объем"],
-            "Разная фасовка": len(volumes) > 1,
+            "Штук в упаковке": cheapest["Штук в упаковке"],
+            "Штук в упаковке у второго": priciest["Штук в упаковке"],
+            "Разная фасовка": not same_pack,
         }
         for supplier in suppliers:
             match = group[group["Поставщик"] == supplier]
@@ -127,11 +139,12 @@ def main(min_diff):
     result = result[result["Выгода, %"] >= min_diff]
 
     # Один штрихкод на разных товарах — ошибка в прайсе, а не выгодная цена.
-    # Один штрихкод может стоять на разных товарах или на разной фасовке —
-    # в обоих случаях это не выгодная цена, а несопоставимая пара.
+    # Один штрихкод может стоять на разных товарах — это не выгодная цена, а
+    # несопоставимая пара. Разную фасовку сравнивать уже можно: цены
+    # приведены к штуке, но помечаем ее, чтобы можно было перепроверить.
     bad_name = result["Схожесть названий"].notna() & (result["Схожесть названий"] < 0.2)
     result["Проверить"] = ""
-    result.loc[result["Разная фасовка"], "Проверить"] = "разная фасовка"
+    result.loc[result["Разная фасовка"], "Проверить"] = "разная фасовка, уточнить у поставщика"
     result.loc[bad_name, "Проверить"] = "штрихкод у разных товаров"
     # Крупная разница бывает и настоящей: по MEDI-PEEL RED LACTO SUN SCREEN
     # расхождение в 57% подтвердилось. Поэтому такие позиции остаются в
@@ -139,6 +152,8 @@ def main(min_diff):
     huge = result["Выгода, %"] > 50
     result.loc[huge & (result["Проверить"] == ""), "Проверить"] = "крупная разница, сверить"
     suspect = bad_name | result["Разная фасовка"]
+    # Приведение к штуке имеет смысл только при совпавшей фасовке, поэтому
+    # позиции с разной фасовкой в рейтинг не идут — их надо уточнить.
     clean = result[~suspect]
 
     out_path = os.path.join(OUT_DIR, "supplier_price_comparison.xlsx")
@@ -153,8 +168,8 @@ def main(min_diff):
         print("\nКто чаще дешевле:")
         print(clean["Дешевле у"].value_counts().to_string())
         print("\nТоп-15 по выгоде:")
-        cols = ["Бренд", "Товар", "Объем", "Дешевле у", "Цена, KRW", "Дороже у",
-                "Цена дороже, KRW", "Выгода, %"]
+        cols = ["Бренд", "Товар", "Объем", "Дешевле у", "Цена за шт, KRW", "Дороже у",
+                "Цена за шт дороже, KRW", "Выгода, %"]
         print(clean[cols].head(15).to_string(index=False))
     print(f"\nСохранено: {out_path}")
 
