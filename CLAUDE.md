@@ -35,6 +35,8 @@
 - `tools/build_registry.py` — собирает РЕЕСТР ЦЕН по структуре инструкции
   по закупкам (колонки A-Q): `outputs/registry_prices.xlsx` и `.csv`.
   CSV идет в проект Claude, сырые прайсы туда не грузим.
+- `tools/build_supplier_passport.py` — листы ПОСТАВЩИКИ, ЖУРНАЛ ПРАЙСОВ и
+  БРЕНДЫ ПО ПОСТАВЩИКАМ: `outputs/supplier_passport.xlsx`.
 
 ## Единица цены
 
