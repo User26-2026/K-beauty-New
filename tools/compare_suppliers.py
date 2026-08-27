@@ -18,6 +18,8 @@ import re
 
 import pandas as pd
 
+from price_unit import unify_packs
+
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
 
@@ -78,11 +80,17 @@ def main(min_diff):
         print("Сравнивать не с чем: нужен минимум второй поставщик.")
         return
 
+    # Фасовку сводим по штрихкоду: часть поставщиков объем не пишет вовсе,
+    # и тогда набор из десяти считался бы за штуку.
+    df, pack_conflicts = unify_packs(df)
+    if pack_conflicts:
+        print(f"Разное число штук в упаковке: {len(pack_conflicts)} позиций")
+
     df["Ключ"] = df.apply(build_key, axis=1)
     df = df[df["Ключ"].notna()]
 
     # У одного поставщика товар может встретиться дважды — берем дешевле.
-    best = (df.sort_values("Цена за штуку, KRW")
+    best = (df.sort_values("Цена за штуку (сводно)")
               .groupby(["Ключ", "Поставщик"], as_index=False)
               .first())
 
@@ -96,38 +104,37 @@ def main(min_diff):
     rows = []
     for key, group in overlap.groupby("Ключ"):
         # Сравниваем цену за штуку: у одного поставщика это может быть набор.
-        group = group.sort_values("Цена за штуку, KRW")
+        group = group.sort_values("Цена за штуку (сводно)")
         cheapest, priciest = group.iloc[0], group.iloc[-1]
-        diff = ((priciest["Цена за штуку, KRW"] - cheapest["Цена за штуку, KRW"])
-                / priciest["Цена за штуку, KRW"] * 100)
+        diff = ((priciest["Цена за штуку (сводно)"] - cheapest["Цена за штуку (сводно)"])
+                / priciest["Цена за штуку (сводно)"] * 100)
         similarity = name_similarity(cheapest["Название EN"], priciest["Название EN"])
         # Фасовка сопоставима, только если совпали и единица цены, и число
         # штук в упаковке. Иначе делить цену на штуки нельзя: неизвестно,
         # относится ли цена второго поставщика к той же упаковке.
-        packs = {(cheapest["Единица цены"], cheapest["Штук в упаковке"]),
-                 (priciest["Единица цены"], priciest["Штук в упаковке"])}
-        same_pack = len({(u, 0 if pd.isna(n) else n) for u, n in packs}) == 1
+        packs = {cheapest["Штук в упаковке (сводно)"], priciest["Штук в упаковке (сводно)"]}
+        same_pack = len({0 if pd.isna(n) else n for n in packs}) == 1
         row = {
             "Ключ": key,
             "Бренд": cheapest["Бренд"],
             "Товар": cheapest["Название EN"],
             "Объем": cheapest["Объем"],
             "Дешевле у": cheapest["Поставщик"],
-            "Цена за шт, KRW": cheapest["Цена за штуку, KRW"],
+            "Цена за шт, KRW": cheapest["Цена за штуку (сводно)"],
             "Цена в прайсе, KRW": cheapest["Закупка, KRW"],
             "Единица": cheapest["Единица цены"],
-            "Себестоимость штуки, руб": cheapest["Себестоимость штуки, руб"],
+            "Себестоимость штуки, руб": round(cheapest["Цена за штуку (сводно)"] * 0.058 * 1.4, 2),
             "Дороже у": priciest["Поставщик"],
-            "Цена за шт дороже, KRW": priciest["Цена за штуку, KRW"],
+            "Цена за шт дороже, KRW": priciest["Цена за штуку (сводно)"],
             "Единица у второго": priciest["Единица цены"],
             "Выгода, %": round(diff, 1),
-            "Выгода, руб": round(priciest["Себестоимость штуки, руб"]
-                                 - cheapest["Себестоимость штуки, руб"], 2),
+            "Выгода, руб": round((priciest["Цена за штуку (сводно)"]
+                                  - cheapest["Цена за штуку (сводно)"]) * 0.058 * 1.4, 2),
             "Товар у второго": priciest["Название EN"],
             "Схожесть названий": None if similarity is None else round(similarity, 2),
             "Объем у второго": priciest["Объем"],
-            "Штук в упаковке": cheapest["Штук в упаковке"],
-            "Штук в упаковке у второго": priciest["Штук в упаковке"],
+            "Штук в упаковке": cheapest["Штук в упаковке (сводно)"],
+            "Штук в упаковке у второго": priciest["Штук в упаковке (сводно)"],
             "Разная фасовка": not same_pack,
         }
         for supplier in suppliers:

@@ -77,3 +77,34 @@ def detect(volume, name=""):
     volume = re.sub(r"\s+", " ", str(volume or "")).strip()
     name = re.sub(r"\s+", " ", str(name or "")).strip()
     return _from_volume(volume) or _from_name(name) or (PIECE, None)
+
+
+def unify_packs(df):
+    """Сводит фасовку по штрихкоду и пересчитывает цену за штуку.
+
+    Фасовка — свойство товара, а не поставщика. Если один поставщик написал
+    `27ml * 10EA`, а другой не указал объем вовсе, упаковка у них одна и та
+    же: у обоих один штрихкод. Без этого цена набора у второго делится на
+    единицу и он выглядит дороже в десять раз.
+
+    Добавляет колонки «Штук в упаковке (сводно)» и «Цена за штуку (сводно)».
+    Возвращает пару: таблица и список штрихкодов, где поставщики указали
+    разное число штук — их надо уточнять, а не усреднять.
+    """
+    import pandas as pd
+
+    result = df.copy()
+    ean = result["Штрихкод"].fillna("").astype(str).str.replace(r"\D", "", regex=True)
+    result["_EAN"] = ean.where(ean.str.len() >= 8)
+
+    stated = result.dropna(subset=["_EAN", "Штук в упаковке"])
+    counts = stated.groupby("_EAN")["Штук в упаковке"]
+    conflicts = sorted(counts.nunique()[lambda s: s > 1].index)
+    packs = counts.max()
+
+    unified = result["_EAN"].map(packs)
+    # Где никто фасовку не указал, товар считаем штучным.
+    result["Штук в упаковке (сводно)"] = unified.fillna(result["Штук в упаковке"])
+    divisor = result["Штук в упаковке (сводно)"].fillna(1).replace(0, 1)
+    result["Цена за штуку (сводно)"] = (result["Закупка, KRW"] / divisor).round(2)
+    return result.drop(columns="_EAN"), conflicts

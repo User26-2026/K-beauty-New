@@ -16,6 +16,8 @@ import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from price_unit import unify_packs
+
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
 RATE = 0.058          # рублей за вону, тот же курс, что в разборе прайсов
@@ -71,15 +73,21 @@ def main(brand, min_diff):
     if rows.empty:
         raise SystemExit(f"Бренд {brand} не найден")
 
+    # Фасовку сводим по штрихкоду: часть поставщиков объем не пишет вовсе.
+    rows, pack_conflicts = unify_packs(rows)
+    if pack_conflicts:
+        print(f"Разное число штук в упаковке у поставщиков: {len(pack_conflicts)} "
+              f"позиций, напр. {', '.join(pack_conflicts[:3])}")
+
     # У одного поставщика товар может встретиться дважды — берем дешевле.
-    best = (rows.sort_values("Цена за штуку, KRW")
+    best = (rows.sort_values("Цена за штуку (сводно)")
                 .drop_duplicates(["Штрихкод", "Поставщик"]))
     suppliers = sorted(best["Поставщик"].unique())
     print(f"{brand}: SKU со штрихкодом по поставщикам")
     print(best.groupby("Поставщик").size().to_string())
 
     # Сравниваем цену за штуку: у одного поставщика это может быть набор.
-    prices = best.pivot(index="Штрихкод", columns="Поставщик", values="Цена за штуку, KRW")
+    prices = best.pivot(index="Штрихкод", columns="Поставщик", values="Цена за штуку (сводно)")
     units = best.pivot(index="Штрихкод", columns="Поставщик", values="Единица цены")
     units.columns = [f"{c}: единица" for c in units.columns]
     info = (best.sort_values("Название EN", key=lambda s: s.str.len(), ascending=False)
