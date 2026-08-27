@@ -29,10 +29,6 @@ OUT_CSV = "outputs/registry_prices.csv"
 PRICE_ROOT = "data/price_lists"
 
 COUNTRY = "KR"
-# Базис подтвержден по всем поставщикам: EXW, самовывоз с их склада.
-# Отдельные прайсы при этом сами написаны на FOB — такие строки помечаем,
-# потому что расхождение надо снимать с менеджером, а не замалчивать.
-CONFIRMED_BASIS = "EXW"
 # Поставщик из сводной таблицы -> папка с его прайсами.
 FOLDERS = {
     "Классик": "classic",
@@ -143,7 +139,7 @@ def main():
         "Валюта": "KRW",
         "Единица цены": df["Единица цены"],
         "Кол-во в коробе": df["Шт/короб"],
-        "Базис поставки": CONFIRMED_BASIS,
+        "Базис поставки": df["Базис"],
         "Условия оплаты": "уточнить",
         "Мин. партия": [terms.get(f, ("", "уточнить"))[1] for f in df["Файл"]],
         "Срок годности": df["Срок годности"],
@@ -156,9 +152,6 @@ def main():
             (dates.get(f, ("", ""))[1] for f in df["Файл"]),
             df["Единица цены"], df["Штук в упаковке"], df["Файл"]):
         parts = []
-        in_file = terms.get(filename, ("уточнить", ""))[0]
-        if in_file not in ("уточнить", CONFIRMED_BASIS):
-            parts.append(f"в прайсе указан базис {in_file}, подтвержден {CONFIRMED_BASIS}")
         if accuracy != "месяц":
             parts.append(f"дата прайса: {accuracy}")
         else:
@@ -179,9 +172,8 @@ def main():
     print("\nДата прайса определена:", int((out["Дата прайса"] != "").sum()), "из", len(out))
     print("Диапазон дат:", out.loc[out["Дата прайса"] != "", "Дата прайса"].min(),
           "—", out.loc[out["Дата прайса"] != "", "Дата прайса"].max())
-    print(f"\nБазис поставки: {CONFIRMED_BASIS} по всем позициям (подтверждено)")
-    contradict = out["Примечание"].str.contains("в прайсе указан базис").sum()
-    print(f"Прайсов, где написан другой базис: {contradict} позиций — помечены на сверку")
+    print("\nБазис поставки:")
+    print(out["Базис поставки"].value_counts().to_string())
     print("\nМин. партия:")
     print(out["Мин. партия"].value_counts().head(6).to_string())
     print(f"\nСохранено: {OUT_XLSX}\n           {OUT_CSV}")

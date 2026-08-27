@@ -57,6 +57,11 @@ def supplier_name(path):
     key = os.path.basename(path.rstrip("/"))
     return SUPPLIERS.get(key, key.replace("_", " ").title())
 
+# Базис поставки. По умолчанию EXW — это подтверждено по всем поставщикам,
+# но отдельные прайсы написаны на FOB, и тогда берем то, что в прайсе.
+DEFAULT_BASIS = "EXW"
+BASIS_WORDS = r"\b(FOB|EXW|CIF|CIP|DAP|DDP|FCA)\b"
+
 # Курс ЦБ, рублей за 1 вону. Обновляем на дату расчета через --rate.
 KRW_RUB = 0.058
 # Логистика, пошлина и приемка сверх закупочной цены.
@@ -248,6 +253,11 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
     if header_idx is None:
         return [], "заголовок не найден"
 
+    # Базис ищем по шапке прайса: он пишется в заголовке или в подписи цены.
+    top_text = " ".join(str(c) for row in rows[:header_idx + 2] for c in row if c is not None)
+    found_basis = re.search(BASIS_WORDS, top_text, re.I)
+    basis = found_basis.group(1).upper() if found_basis else DEFAULT_BASIS
+
     header = merge_header(rows, header_idx)
     mapping = map_columns(header)
     if "supply_krw" not in mapping:
@@ -301,6 +311,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
             "Название RU": clean_text(cell("name_ru")),
             "Тип": clean_text(cell("type")),
             "Объем": clean_text(cell("volume")),
+            "Базис": basis,
             "Единица цены": unit,
             "Штук в упаковке": per_pack,
             "MSRP, KRW": to_number(cell("msrp_krw")),

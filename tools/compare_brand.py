@@ -90,11 +90,14 @@ def main(brand, min_diff):
     prices = best.pivot(index="Штрихкод", columns="Поставщик", values="Цена за штуку (сводно)")
     units = best.pivot(index="Штрихкод", columns="Поставщик", values="Единица цены")
     units.columns = [f"{c}: единица" for c in units.columns]
+    bases = best.pivot(index="Штрихкод", columns="Поставщик", values="Базис")
     info = (best.sort_values("Название EN", key=lambda s: s.str.len(), ascending=False)
                 .drop_duplicates("Штрихкод")
                 .set_index("Штрихкод")[["Название EN", "Объем", "MSRP, KRW"]])
 
     table = info.join(prices).join(units)
+    # EXW и FOB напрямую сравнивать нельзя: при EXW доставку до порта платим мы.
+    table["Базисы"] = bases.apply(lambda row: ", ".join(sorted(row.dropna().unique())), axis=1)
     shared = table[(prices.notna().sum(axis=1) > 1).reindex(table.index, fill_value=False)].copy()
     print(f"\nЕсть более чем у одного поставщика: {len(shared)} из {len(table)}")
     if shared.empty:
@@ -111,6 +114,7 @@ def main(brand, min_diff):
     unit_cols = [c for c in shared.columns if c.endswith(": единица")]
     shared["Фасовка совпала"] = shared[unit_cols].apply(
         lambda row: row.dropna().nunique() <= 1, axis=1)
+    shared["Базис совпал"] = ~shared["Базисы"].str.contains(",")
 
     print("\nКто дешевле, по числу позиций:")
     print(shared["Дешевле у"].value_counts().to_string())
@@ -133,6 +137,11 @@ def main(brand, min_diff):
     mismatch = int((~shared["Фасовка совпала"]).sum())
     if mismatch:
         print(f"\nФасовка не совпала у {mismatch} позиций — их надо уточнить у менеджера.")
+    mixed = int((~shared["Базис совпал"]).sum())
+    if mixed:
+        print(f"Разный базис поставки у {mixed} позиций: сравнивать EXW с FOB напрямую "
+              f"нельзя, при EXW доставку до порта оплачиваем мы.")
+        print(shared.loc[~shared["Базис совпал"], "Базисы"].value_counts().to_string())
 
     top = shared[shared["Разница, %"] >= min_diff]
     print(f"\nТоп расхождений (от {min_diff}%):")
