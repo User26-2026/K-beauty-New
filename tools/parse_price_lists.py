@@ -33,6 +33,7 @@ OUT_DIR = "outputs"
 # Имя папки поставщика -> как называем его в отчетах. Файлы, лежащие прямо
 # в price_lists, — это прайсы, полученные от брендов напрямую.
 SUPPLIERS = {
+    "annecy": "Аннеси",
     "classic": "Классик",
     "ge_global": "G&E Global",
     "glowbeauty": "GlowBeauty",
@@ -78,7 +79,7 @@ COLUMN_PATTERNS = {
     # LEBELAGE ведет отдельную колонку с русскими названиями — забираем.
     "name_ru": [r"наименование", r"название"],
     "type": [r"^type$", r"^category$", r"product\s*line"],
-    "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량"],
+    "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량", r"규격"],
     "msrp_krw": [
         r"msrp", r"^srp\b", r"^retail\b", r"retail\s*price", r"list\s*price",
         r"consumer\s*price", r"regular\s*price\s*\(krw",
@@ -123,6 +124,8 @@ FALLBACK_PATTERNS = {
 HEADER_HINTS = [
     "barcode", "bar code", "product name", "supply price", "msrp", "vol",
     "brand", "moq", "retail price", "code",
+    # Аннеси подписывает шапку целиком по-корейски.
+    "바코드", "품명", "제품명", "공급가", "소비자", "용량", "규격", "브랜드", "입수",
 ]
 
 
@@ -232,7 +235,8 @@ def brand_from_filename(path):
     folder = os.path.basename(os.path.dirname(path))
     name = os.path.splitext(os.path.basename(path))[0]
     name = re.sub(rf"^{re.escape(folder)}_", "", name)
-    name = re.split(r"_?PRICE[_ ]?L[EI]S?T|_\d{2}\.\d{2}", name, flags=re.I)[0]
+    name = re.sub(r"^\d{6}_", "", name)                     # Аннеси: 260810_LAMELIN_LIST
+    name = re.split(r"_?PRICE[_ ]?L[EI]S?T|_LIST\b|_\d{2}\.\d{2}", name, flags=re.I)[0]
     name = re.sub(r"_\d{4}$", "", name)
     return name.replace("_", " ").strip(" ._").upper()
 
