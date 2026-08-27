@@ -209,6 +209,25 @@ def to_number(value):
 
 KOREAN = r"\uac00-\ud7a3"
 
+# Один бренд поставщики пишут по-разному, и сравнение по нему дробится.
+BRAND_ALIASES = {
+    "ROUNDLAB": "ROUND LAB",
+    "MAANYO": "MANYO",
+    "DR ALTHEA": "DR. ALTHEA",
+    "VT COSMETICS": "VT",
+    "AMORE PACIFIC": "AMORE",
+    "3W CLINIC LAB": "3W CLINIC",
+    "3W CLINIC PREMIUM": "3W CLINIC",
+}
+
+
+def normalize_brand(brand):
+    """Единое написание бренда: без корейской расшифровки в скобках."""
+    if not brand:
+        return brand
+    name = re.sub(r"\s*\(.*?\)\s*$", "", str(brand)).strip()
+    return BRAND_ALIASES.get(name.upper(), name)
+
 
 def split_languages(text):
     """Разносит название на английское и корейское.
@@ -240,9 +259,12 @@ def brand_from_filename(path):
     """
     folder = os.path.basename(os.path.dirname(path))
     name = os.path.splitext(os.path.basename(path))[0]
-    name = re.sub(rf"^{re.escape(folder)}_", "", name)
-    name = re.sub(r"^\d{6}_", "", name)                     # Аннеси: 260810_LAMELIN_LIST
-    name = re.split(r"_?PRICE[_ ]?L[EI]S?T|_LIST\b|_\d{2}\.\d{2}", name, flags=re.I)[0]
+    # Дата в начале имени: 260810_ у Аннеси, 26.07.01_ у Papa Cosmetic.
+    name = re.sub(r"^\d{6}_|^\d{2}\.\d{2}\.\d{2}_", "", name, flags=re.I)
+    # Имя поставщика встречается и в префиксе папки, и внутри самого имени.
+    name = re.sub(rf"{re.escape(folder)}_?", "", name, flags=re.I)
+    name = re.sub(r"^\d{6}_|^\d{2}\.\d{2}\.\d{2}_", "", name)
+    name = re.split(r"_?PRICE[_ ]?L[EI]S?T|_LIST\d*\b|_\d{2}\.\d{2}", name, flags=re.I)[0]
     name = re.sub(r"_\d{4}$", "", name)
     return name.replace("_", " ").strip(" ._").upper()
 
@@ -297,6 +319,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
 
         brand = clean_text(cell("brand")) or last_brand
         last_brand = brand  # в прайсах бренд ставят только в первой строке блока
+        brand = normalize_brand(brand)
 
         unit, per_pack = detect_price_unit(clean_text(cell("volume")), name_en or name_kr)
         records.append({
