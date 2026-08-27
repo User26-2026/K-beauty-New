@@ -37,6 +37,7 @@ SUPPLIERS = {
     "classic": "Классик",
     "ge_global": "G&E Global",
     "glowbeauty": "GlowBeauty",
+    "papacosmetic": "Papa Cosmetic",
     "price_lists": "Прямой прайс бренда",
 }
 
