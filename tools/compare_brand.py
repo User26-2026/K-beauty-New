@@ -13,6 +13,7 @@ import os
 import re
 
 import pandas as pd
+from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -63,6 +64,58 @@ def format_sheet(worksheet, price_columns):
         winner = row[winner_col - 1].value
         if winner in titles:
             row[titles.index(winner)].fill = BEST_FILL
+
+
+def overpay_table(prices, info, bases):
+    """На сколько процентов каждый поставщик дороже самого дешевого."""
+    cheapest = prices.min(axis=1)
+    overpay = prices.div(cheapest, axis=0).sub(1).mul(100).round(1)
+    table = info.join(overpay)
+    table["Базисы"] = bases.apply(lambda row: ", ".join(sorted(row.dropna().unique())), axis=1)
+    table["Мин. цена, KRW"] = cheapest.round(0)
+    table["Дешевле у"] = prices.idxmin(axis=1)
+    return table
+
+
+def summary_table(prices, bases):
+    """Свод по поставщикам: охват, победы, переплата, стоимость корзины."""
+    cheapest = prices.min(axis=1)
+    common = prices.dropna()
+    rows = []
+    for supplier in prices.columns:
+        column = prices[supplier]
+        over = (column.dropna() / cheapest[column.notna()] - 1) * 100
+        basket = common[supplier].sum() if not common.empty else None
+        rows.append({
+            "Поставщик": supplier,
+            "Базис": ", ".join(sorted(bases[supplier].dropna().unique())),
+            "Позиций": int(column.notna().sum()),
+            "Дешевле всех": int((column == cheapest).sum()),
+            "Переплата медиана, %": round(over.median(), 1),
+            "Переплата средняя, %": round(over.mean(), 1),
+            "Максимум переплаты, %": round(over.max(), 1),
+            f"Корзина из {len(common)} позиций, KRW": basket,
+        })
+    result = pd.DataFrame(rows).sort_values("Переплата медиана, %")
+    basket_col = f"Корзина из {len(common)} позиций, KRW"
+    if result[basket_col].notna().any():
+        base = result[basket_col].min()
+        result["Корзина дороже минимума, %"] = ((result[basket_col] / base - 1) * 100).round(1)
+    return result
+
+
+def paint_overpay(worksheet, first_col, last_col, first_row, last_row):
+    """Зеленый — самая низкая цена, красный — самая высокая переплата."""
+    span = (f"{get_column_letter(first_col)}{first_row}"
+            f":{get_column_letter(last_col)}{last_row}")
+    worksheet.conditional_formatting.add(span, ColorScaleRule(
+        start_type="num", start_value=0, start_color="63BE7B",
+        mid_type="num", mid_value=10, mid_color="FFEB84",
+        end_type="num", end_value=30, end_color="F8696B"))
+    for row in worksheet.iter_rows(min_row=first_row, max_row=last_row,
+                                   min_col=first_col, max_col=last_col):
+        for cell in row:
+            cell.number_format = "0.0\%"
 
 
 def main(brand, min_diff):
@@ -126,12 +179,27 @@ def main(brand, min_diff):
         lambda row: row.dropna().index[0] if row.notna().any() else "", axis=1)
 
     out_path = os.path.join(OUT_DIR, f"brand_{re.sub(r'[^a-z0-9]+', '_', brand.lower())}_by_supplier.xlsx")
+    overpay = overpay_table(prices.loc[shared.index], info.loc[shared.index],
+                            bases.loc[shared.index])
+    overpay = overpay.sort_values("Мин. цена, KRW", ascending=False)
+    summary = summary_table(prices.loc[shared.index], bases.loc[shared.index])
+
     with pd.ExcelWriter(out_path) as writer:
+        summary.to_excel(writer, sheet_name="ИТОГО", index=False)
+        overpay.to_excel(writer, sheet_name="ПЕРЕПЛАТА %")
         shared.to_excel(writer, sheet_name="СРАВНЕНИЕ")
         only_one.to_excel(writer, sheet_name="ТОЛЬКО У ОДНОГО")
         table.to_excel(writer, sheet_name="ВСЕ ПОЗИЦИИ")
         for sheet in writer.book.worksheets:
             format_sheet(sheet, price_cols)
+        sheet = writer.sheets["ПЕРЕПЛАТА %"]
+        titles = [str(c.value) for c in sheet[1]]
+        columns = [titles.index(s) + 1 for s in price_cols if s in titles]
+        if columns:
+            paint_overpay(sheet, min(columns), max(columns), 2, len(overpay) + 1)
+
+    print("\n=== Насколько дороже самого дешевого ===")
+    print(summary.to_string(index=False))
     print(f"\nПозиций только у одного поставщика: {len(only_one)}")
     print(only_one["Есть только у"].value_counts().to_string())
     mismatch = int((~shared["Фасовка совпала"]).sum())
