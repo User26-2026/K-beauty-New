@@ -1,17 +1,17 @@
 {
-  "fetched_at": "2026-08-29T13:34:24.294001Z",
+  "fetched_at": "2026-08-30T12:23:30.170125Z",
   "errors": [
     [
       "stocks",
-      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/stocks?dateFrom=2026-08-26"
+      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/stocks?dateFrom=2026-08-27"
     ],
     [
       "report_detail",
-      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/reportDetailByPeriod?dateFrom=2026-07-30&dateTo=2026-08-29&rrdid=0"
+      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/reportDetailByPeriod?dateFrom=2026-07-31&dateTo=2026-08-30&rrdid=0"
     ],
     [
       "incomes",
-      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/incomes?dateFrom=2026-05-31"
+      "404 Client Error: Not Found for url: https://statistics-api.wildberries.ru/api/v1/supplier/incomes?dateFrom=2026-06-01"
     ]
   ],
   "tasks_ok": [
