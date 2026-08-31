@@ -32,13 +32,19 @@ OUT_DIR = "outputs"
 
 # Имя папки поставщика -> как называем его в отчетах. Файлы, лежащие прямо
 # в price_lists, — это прайсы, полученные от брендов напрямую.
+# Страна и валюта нужны, чтобы не сравнивать поставщиков из разных стран:
+# у них разный маршрут и разные расходы после отгрузки.
 SUPPLIERS = {
-    "annecy": "Аннеси",
-    "classic": "Классик",
-    "ge_global": "G&E Global",
-    "glowbeauty": "GlowBeauty",
-    "papacosmetic": "Papa Cosmetic",
-    "price_lists": "Прямой прайс бренда",
+    "annecy": ("Аннеси", "KR", "KRW"),
+    "classic": ("Классик", "KR", "KRW"),
+    "ge_global": ("G&E Global", "KR", "KRW"),
+    "glowbeauty": ("GlowBeauty", "KR", "KRW"),
+    "papacosmetic": ("Papa Cosmetic", "KR", "KRW"),
+    "price_lists": ("Прямой прайс бренда", "KR", "KRW"),
+    "koreatrade": ("KoreaTrade", "RU", "RUB"),
+    "korshop": ("Korshop", "KG", "USD"),
+    "keauty": ("KEAUTY", "RU", "RUB"),
+    "aibeauty": ("Aibeauty", "KG", "USD"),
 }
 
 
@@ -53,9 +59,10 @@ def supplier_dirs():
     return found
 
 
-def supplier_name(path):
+def supplier_info(path):
+    """Имя, страна и валюта поставщика по имени его папки."""
     key = os.path.basename(path.rstrip("/"))
-    return SUPPLIERS.get(key, key.replace("_", " ").title())
+    return SUPPLIERS.get(key, (key.replace("_", " ").title(), "KR", "KRW"))
 
 # Базис поставки. По умолчанию EXW — это подтверждено по всем поставщикам,
 # но отдельные прайсы написаны на FOB, и тогда берем то, что в прайсе.
@@ -70,9 +77,9 @@ IMPORT_MULTIPLIER = 1.4
 # Как узнаем колонку: поле -> список шаблонов по тексту шапки.
 COLUMN_PATTERNS = {
     # 구분/Division в прайсах — порядковый номер строки, не бренд.
-    "brand": [r"^brand$", r"^бренд$"],
+    "brand": [r"^brand$", r"^бренд$", r"^бренд\b"],
     "code": [r"sku\s*no", r"^code$", r"product\s*code", r"sap\s*code", r"^артикул$"],
-    "barcode": [r"bar\s*code", r"barcode", r"바코드"],
+    "barcode": [r"bar\s*code", r"barcode", r"바코드", r"штрихкод"],
     # Названия: сначала колонки с явной пометкой языка (STRONG_PATTERNS),
     # потом общие подписи. Где обе колонки подписаны одинаково, корейская
     # идет первой, поэтому name_kr проверяется раньше name_en.
@@ -81,11 +88,13 @@ COLUMN_PATTERNS = {
         r"^pro\w*t\s*name$", r"^product$", r"^name$",
         # GlowBeauty подписывает колонку названия как Product list.
         r"^product\s*list$", r"item\s*description", r"\bname\b",
+        r"номенклатура", r"наименование",
     ],
     # LEBELAGE ведет отдельную колонку с русскими названиями — забираем.
     "name_ru": [r"наименование", r"название"],
     "type": [r"^type$", r"^category$", r"product\s*line"],
-    "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량", r"규격"],
+    "volume": [r"^vol", r"volume", r"^size$", r"capacity", r"용량", r"규격",
+               r"вес\s*\(объем\)", r"^вес$", r"^объем$"],
     "msrp_krw": [
         r"msrp", r"^srp\b", r"^retail\b", r"retail\s*price", r"list\s*price",
         r"consumer\s*price", r"regular\s*price\s*\(krw",
@@ -97,8 +106,13 @@ COLUMN_PATTERNS = {
         r"sup\w*ly\w*\s*price", r"wholesale\s*price", r"fob\s*price", r"공급가",
         r"distributor\s*price",
         r"unit\s*price", r"^price\s*\(\s*-?\s*vat",
+        # Оптовики РФ и КГ: берем цену самого крупного опта, это их нижний предел.
+        r"опт\s*от\s*300", r"от\s*300\s*т\.?\s*р", r"^цена$",
     ],
-    "qty_per_box": [r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box", r"^master$"],
+    "qty_per_box": [
+        r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box",
+        r"^master$", r"кол-?во\s*в\s*упаковке", r"информация\s*об\s*упаковке",
+    ],
     "moq": [r"^moq", r"moq\s*qty"],
     "shelf_life": [r"shelf\s*life", r"유통기한"],
     "status": [r"^status$", r"^remark$", r"^비고$"],
@@ -132,6 +146,8 @@ HEADER_HINTS = [
     "brand", "moq", "retail price", "code",
     # Аннеси подписывает шапку целиком по-корейски.
     "바코드", "품명", "제품명", "공급가", "소비자", "용량", "규격", "브랜드", "입수",
+    # Российские и киргизские оптовики — по-русски.
+    "штрихкод", "номенклатура", "бренд", "цена", "остаток", "артикул", "упаковк",
 ]
 
 
@@ -153,17 +169,31 @@ def find_header_row(rows, limit=12):
     return best_idx if best_score >= 2 else None
 
 
-def merge_header(rows, header_idx):
-    """Склеиваем двухэтажную шапку: подпись сверху + уточнение снизу."""
-    top = [norm(c) for c in rows[header_idx]]
-    if header_idx + 1 >= len(rows):
-        return top
-    below = [norm(c) for c in rows[header_idx + 1]]
+def looks_like_header(cells):
+    """Строка похожа на часть шапки, если в ней есть опорные слова."""
     extra = ["price", "weight", "size", "cbm", "국문", "영문", "korean", "english"]
-    hits = sum(1 for c in below if c and any(h in c for h in HEADER_HINTS + extra))
-    if hits < 2:
-        return top
-    return [(t + " " + b).strip() for t, b in zip(top, below)]
+    return sum(1 for c in cells if c and any(h in c for h in HEADER_HINTS + extra)) >= 2
+
+
+def merge_header(rows, header_idx):
+    """Склеиваем шапку из нескольких строк.
+
+    Подписи бывают и снизу (двухэтажная шапка с уточнениями), и сверху:
+    korshop пишет «Цена» строкой выше остальных названий колонок.
+    """
+    header = [norm(c) for c in rows[header_idx]]
+
+    if header_idx + 1 < len(rows):
+        below = [norm(c) for c in rows[header_idx + 1]]
+        if looks_like_header(below):
+            header = [(t + " " + b).strip() for t, b in zip(header, below)]
+
+    if header_idx > 0:
+        above = [norm(c) for c in rows[header_idx - 1]]
+        if looks_like_header(above):
+            # Сверху берем только то, для чего в самой шапке подписи нет.
+            header = [t or a for t, a in zip(header, above + [""] * len(header))]
+    return header
 
 
 def map_columns(header):
@@ -269,7 +299,7 @@ def brand_from_filename(path):
     return name.replace("_", " ").strip(" ._").upper()
 
 
-def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
+def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, currency):
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
     header_idx = find_header_row(rows)
     if header_idx is None:
@@ -290,6 +320,11 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
     for row in rows[header_idx + 1:]:
         supply = to_number(row[mapping["supply_krw"]]) if mapping["supply_krw"] < len(row) else None
         if not supply:
+            # Строка-разделитель с одним словом — это название бренда:
+            # korshop и SKIN APPLE так разбивают прайс на секции.
+            filled = [clean_text(c) for c in row if clean_text(c)]
+            if len(filled) == 1 and 2 <= len(filled[0]) <= 40 and not filled[0].isdigit():
+                last_brand = filled[0]
             continue
 
         def cell(field):
@@ -324,6 +359,8 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier):
         unit, per_pack = detect_price_unit(clean_text(cell("volume")), name_en or name_kr)
         records.append({
             "Поставщик": supplier,
+            "Страна": country,
+            "Валюта": currency,
             "Файл": os.path.basename(source),
             "Лист": sheet_name,
             "Бренд": brand,
@@ -376,7 +413,8 @@ def dedupe(records, notes):
         notes.append(
             f"РАЗНЫЕ ЦЕНЫ на листах ({len(conflicts)} SKU), взят лист "
             f"'{kept['Лист']}': напр. {kept['Артикул'] or kept['Штрихкод']} — "
-            f"{kept['Закупка, KRW']:.0f} против {other['Закупка, KRW']:.0f} KRW"
+            f"{kept['Закупка, KRW']:.0f} против {other['Закупка, KRW']:.0f} "
+            f"{kept.get('Валюта', '')}"
         )
     return unique, notes
 
@@ -428,12 +466,13 @@ def open_workbook(path):
     return openpyxl.load_workbook(path, read_only=True, data_only=True)
 
 
-def parse_file(path, supplier):
+def parse_file(path, supplier, country, currency):
     wb = open_workbook(path)
     fallback_brand = brand_from_filename(path)
     records, notes = [], []
     for sheet_name in pick_sheets(wb.sheetnames):
-        found, problem = parse_sheet(wb[sheet_name], path, sheet_name, fallback_brand, supplier)
+        found, problem = parse_sheet(wb[sheet_name], path, sheet_name, fallback_brand,
+                                     supplier, country, currency)
         records.extend(found)
         if problem:
             notes.append(f"{sheet_name}: {problem}")
@@ -446,7 +485,7 @@ def parse_file(path, supplier):
 def main(paths, rate, only_supplier):
     """Разбираем прайсы и складываем в одну таблицу по всем поставщикам."""
     if paths:
-        jobs = [(p, supplier_name(os.path.dirname(p))) for p in paths]
+        jobs = [(p,) + supplier_info(os.path.dirname(p)) for p in paths]
     else:
         dirs = supplier_dirs()
         if only_supplier:
@@ -455,20 +494,20 @@ def main(paths, rate, only_supplier):
                 print(f"Поставщик {only_supplier} не найден в {PRICE_ROOT}")
                 return
         jobs = [
-            (path, supplier_name(d))
+            (path,) + supplier_info(d)
             for d in dirs
             for path in sorted(glob.glob(os.path.join(d, "*.xls*")))
         ]
 
     all_records = []
     current = None
-    for path, supplier in jobs:
+    for path, supplier, country, currency in jobs:
         if supplier != current:
             current = supplier
-            print(f"\n=== {supplier} ===")
+            print(f"\n=== {supplier} ({country}, {currency}) ===")
             print(f"{'Файл':<52} {'SKU':>5}  Замечания")
             print("-" * 92)
-        records, notes = parse_file(path, supplier)
+        records, notes = parse_file(path, supplier, country, currency)
         all_records.extend(records)
         print(f"{os.path.basename(path):<52} {len(records):>5}  {'; '.join(notes)}")
 
