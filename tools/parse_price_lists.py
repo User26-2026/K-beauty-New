@@ -44,6 +44,9 @@ SUPPLIERS = {
     "koreatrade": ("KoreaTrade", "RU", "RUB"),
     "korshop": ("Korshop", "KG", "USD"),
     "keauty": ("KEAUTY", "RU", "RUB"),
+    # Казахстанская компания со складом в Екатеринбурге: товар получают
+    # внутри РФ, поэтому сравниваем с российскими. Прайс в долларах.
+    "safiya": ("SAFIYA", "RU", "USD"),
     "aibeauty": ("Aibeauty", "KG", "USD"),
 }
 
@@ -78,8 +81,9 @@ IMPORT_MULTIPLIER = 1.4
 COLUMN_PATTERNS = {
     # 구분/Division в прайсах — порядковый номер строки, не бренд.
     "brand": [r"^brand$", r"^бренд$", r"^бренд\b"],
+    # SAFIYA подписывает штрихкод как GTIN.
     "code": [r"sku\s*no", r"^code$", r"product\s*code", r"sap\s*code", r"^артикул$"],
-    "barcode": [r"bar\s*code", r"barcode", r"바코드", r"штрихкод"],
+    "barcode": [r"bar\s*code", r"barcode", r"바코드", r"штрихкод", r"^gtin$"],
     # Названия: сначала колонки с явной пометкой языка (STRONG_PATTERNS),
     # потом общие подписи. Где обе колонки подписаны одинаково, корейская
     # идет первой, поэтому name_kr проверяется раньше name_en.
@@ -107,7 +111,7 @@ COLUMN_PATTERNS = {
         r"distributor\s*price",
         r"unit\s*price", r"^price\s*\(\s*-?\s*vat",
         # Оптовики РФ и КГ: берем цену самого крупного опта, это их нижний предел.
-        r"опт\s*от\s*300", r"от\s*300\s*т\.?\s*р", r"^цена$",
+        r"опт\s*от\s*300", r"от\s*300\s*т\.?\s*р", r"^цена$", r"^цена,\s*\$$",
     ],
     "qty_per_box": [
         r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box",
@@ -204,6 +208,15 @@ def map_columns(header):
     этаже шапки. Потом общие подписи — там, где AMORE и FLOR DE MAN зовут обе
     колонки одинаково ("Product Name" / "Product"), первая колонка корейская.
     """
+    mapping = map_once(header, exclude=True)
+    # Отбрасывать цены в долларах имеет смысл, только когда рядом есть цена в
+    # местной валюте: у DEAR KLAIRS так, а у SAFIYA весь прайс в долларах.
+    if "supply_krw" not in mapping:
+        mapping = map_once(header, exclude=False)
+    return mapping
+
+
+def map_once(header, exclude):
     mapping, used = {}, set()
     for patterns_set in (STRONG_PATTERNS, COLUMN_PATTERNS, FALLBACK_PATTERNS):
         for col_idx, title in enumerate(header):
@@ -214,7 +227,7 @@ def map_columns(header):
                     continue
                 if not any(re.search(p, title) for p in patterns):
                     continue
-                if any(re.search(p, title) for p in EXCLUDE_PATTERNS.get(field, [])):
+                if exclude and any(re.search(p, title) for p in EXCLUDE_PATTERNS.get(field, [])):
                     continue
                 mapping[field] = col_idx
                 used.add(col_idx)
