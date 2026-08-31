@@ -72,8 +72,9 @@ def supplier_info(path):
 DEFAULT_BASIS = "EXW"
 BASIS_WORDS = r"\b(FOB|EXW|CIF|CIP|DAP|DDP|FCA)\b"
 
-# Курс ЦБ, рублей за 1 вону. Обновляем на дату расчета через --rate.
+# Курсы ЦБ, рублей за единицу валюты. Обновляем на дату расчета.
 KRW_RUB = 0.058
+USD_RUB = 87.0
 # Логистика, пошлина и приемка сверх закупочной цены.
 IMPORT_MULTIPLIER = 1.4
 
@@ -236,14 +237,20 @@ def map_once(header, exclude):
 
 
 def to_number(value):
-    """Число из ячейки: убираем валюту, пробелы и разделители тысяч."""
+    """Число из ячейки: убираем валюту, пробелы и разделители разрядов.
+
+    Запятая бывает и разделителем тысяч (40,000), и десятичной точкой:
+    korshop пишет цены как 7,73. Различаем по числу цифр после запятой.
+    """
     if value is None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    text = re.sub(r"[^\d.,\-]", "", str(value)).replace(",", "")
+    text = re.sub(r"[^\d.,\-]", "", str(value))
     if not re.search(r"\d", text):
         return None
+    decimal = re.fullmatch(r"-?\d+,\d{1,2}", text)
+    text = text.replace(",", "." if decimal else "")
     try:
         return float(text)
     except ValueError:
@@ -508,7 +515,7 @@ def parse_file(path, supplier, country, currency):
     return unique, notes
 
 
-def main(paths, rate, only_supplier):
+def main(paths, rate, usd, only_supplier):
     """Разбираем прайсы и складываем в одну таблицу по всем поставщикам."""
     if paths:
         jobs = [(p,) + supplier_info(os.path.dirname(p)) for p in paths]
@@ -547,8 +554,17 @@ def main(paths, rate, only_supplier):
     # Цену набора делим на число штук: сравнивать можно только штуку со штукой.
     per_pack = df["Штук в упаковке"].where(df["Единица цены"] == "за набор").fillna(1)
     df["Цена за штуку, KRW"] = (df["Закупка, KRW"] / per_pack).round(2)
-    df["Себестоимость, руб"] = (df["Закупка, KRW"] * rate * IMPORT_MULTIPLIER).round(2)
-    df["Себестоимость штуки, руб"] = (df["Цена за штуку, KRW"] * rate * IMPORT_MULTIPLIER).round(2)
+
+    # Приводим все валюты к рублям, чтобы цены разных стран были сопоставимы.
+    to_rub = df["Валюта"].map({"KRW": rate, "USD": usd, "RUB": 1.0}).fillna(1.0)
+    df["Цена, руб"] = (df["Закупка, KRW"] * to_rub).round(2)
+    df["Цена за штуку, руб"] = (df["Цена за штуку, KRW"] * to_rub).round(2)
+
+    # Множитель импорта применяем только к корейской закупке: у российских
+    # оптовиков товар уже ввезен, у них это цена продажи, а не наша закупка.
+    imported = (df["Страна"] == "KR").map({True: IMPORT_MULTIPLIER, False: 1.0})
+    df["Себестоимость, руб"] = (df["Цена, руб"] * imported).round(2)
+    df["Себестоимость штуки, руб"] = (df["Цена за штуку, руб"] * imported).round(2)
     df["Курс KRW"] = rate
 
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -556,7 +572,8 @@ def main(paths, rate, only_supplier):
     df.to_excel(out_path, index=False)
     print(f"\nВсего SKU: {len(df)}   Брендов: {df['Бренд'].nunique()}"
           f"   Поставщиков: {df['Поставщик'].nunique()}")
-    print(f"Курс: {rate} руб/вона, множитель импорта {IMPORT_MULTIPLIER}")
+    print(f"Курсы: {rate} руб/вона, {usd} руб/доллар. "
+          f"Множитель импорта {IMPORT_MULTIPLIER} — только для корейской закупки")
     print(f"Сохранено: {out_path}")
 
 
@@ -564,6 +581,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="*", help="конкретные файлы прайсов")
     parser.add_argument("--rate", type=float, default=KRW_RUB, help="курс рублей за 1 вону")
+    parser.add_argument("--usd", type=float, default=USD_RUB, help="курс рублей за 1 доллар")
     parser.add_argument("--supplier", help="имя папки поставщика в data/price_lists")
     ns = parser.parse_args()
-    main(ns.paths, ns.rate, ns.supplier)
+    main(ns.paths, ns.rate, ns.usd, ns.supplier)

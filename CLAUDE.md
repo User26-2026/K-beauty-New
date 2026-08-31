@@ -40,6 +40,10 @@
   CSV идет в проект Claude, сырые прайсы туда не грузим.
 - `tools/build_supplier_passport.py` — листы ПОСТАВЩИКИ, ЖУРНАЛ ПРАЙСОВ и
   БРЕНДЫ ПО ПОСТАВЩИКАМ: `outputs/supplier_passport.xlsx`.
+- `tools/rebuild_pricelist.py` — пересчет прайса с потолком по российским
+  оптовикам: `outputs/pricelist_rebuilt.xlsx`.
+- `tools/analyze_leftovers.py` — что остается на складе после отгрузки и
+  почем это берут в России: `outputs/leftovers.xlsx`.
 - `tools/build_sales_pricelist.py` — прайс для покупателя в вонах: цена
   берется более дорогая из имеющихся, сверху наценка (`--markup`).
   Поставщики и наша закупка в файл не попадают.
