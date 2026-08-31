@@ -275,6 +275,19 @@ def split_languages(text):
     return re.sub(r"\s+", " ", latin), re.sub(r"\s+", " ", korean)
 
 
+def clean_barcode(value):
+    """Штрихкод к 13 цифрам.
+
+    Российские оптовики дописывают к штрихкоду свой суффикс через дефис:
+    8809647394136-11. Без обрезки получается пятнадцатизначное число, и
+    товар перестает находиться у других поставщиков.
+    """
+    digits = re.sub(r"\D", "", str(value or ""))
+    if len(digits) > 13:
+        digits = digits[:13]
+    return digits if len(digits) >= 8 else ""
+
+
 def clean_text(value):
     if value is None:
         return ""
@@ -365,7 +378,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, curre
             "Лист": sheet_name,
             "Бренд": brand,
             "Артикул": clean_text(cell("code")),
-            "Штрихкод": clean_text(cell("barcode")),
+            "Штрихкод": clean_barcode(cell("barcode")),
             "Название EN": name_en,
             "Название KR": name_kr,
             "Название RU": clean_text(cell("name_ru")),
