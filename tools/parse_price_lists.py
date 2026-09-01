@@ -37,6 +37,7 @@ OUT_DIR = "outputs"
 SUPPLIERS = {
     "annecy": ("Аннеси", "KR", "KRW"),
     "classic": ("Классик", "KR", "KRW"),
+    "fineskin": ("FINESKIN", "KR", "KRW"),
     "ge_global": ("G&E Global", "KR", "KRW"),
     "glowbeauty": ("GlowBeauty", "KR", "KRW"),
     "papacosmetic": ("Papa Cosmetic", "KR", "KRW"),
@@ -268,6 +269,18 @@ KOREAN = r"\uac00-\ud7a3"
 # Один бренд поставщики пишут по-разному, и сравнение по нему дробится.
 BRAND_ALIASES = {
     "ROUNDLAB": "ROUND LAB",
+    "FARMSTAY 2": "FARMSTAY",
+    "DR.ALTHEA": "DR. ALTHEA",
+    "CENTELLIAN24": "CENTELLIAN 24 MADECA",
+    "CENTELLIAN 24": "CENTELLIAN 24 MADECA",
+    "JMSOLUTION JMELLA": "JMELLA",
+    "ETUDE HOUSE": "ETUDE",
+    "AXISY": "AXIS-Y",
+    "HAPPYBATH": "HAPPY BATH",
+    "COSDEBAHA": "COS DE BAHA",
+    "MISEENSCENE": "MISE EN SCENE",
+    "DERMAFACTORY": "DERMA FACTORY",
+    "TONYMOLY": "TONY MOLY",
     "MAANYO": "MANYO",
     "DR ALTHEA": "DR. ALTHEA",
     "VT COSMETICS": "VT",
@@ -282,7 +295,12 @@ def normalize_brand(brand):
     if not brand:
         return brand
     name = re.sub(r"\s*\(.*?\)\s*$", "", str(brand)).strip()
-    return BRAND_ALIASES.get(name.upper(), name)
+    alias = BRAND_ALIASES.get(name.upper())
+    if alias:
+        return alias
+    # Латиницу приводим к верхнему регистру: иначе Laneige и LANEIGE
+    # считаются разными брендами. Корейские названия не трогаем.
+    return name.upper() if re.fullmatch(r"[A-Za-z0-9 .,&\'+-]+", name) else name
 
 
 def split_languages(text):
