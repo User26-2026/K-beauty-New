@@ -18,6 +18,8 @@ import re
 
 import openpyxl
 import pandas as pd
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 PRICES = "outputs/prices_normalized.xlsx"
 OUT = "outputs/leftovers.xlsx"
@@ -88,6 +90,58 @@ def ru_ceiling():
     return wide
 
 
+HEADER_FILL = PatternFill("solid", fgColor="1F4E78")
+DEAD_FILL = PatternFill("solid", fgColor="FCE4E4")
+TOTAL_FILL = PatternFill("solid", fgColor="DDEBF7")
+
+
+def write_excel(left, table):
+    """Книга по остатку: весь остаток и отдельно то, что не берут вовсе."""
+    dead = left[left["Статус"] == "не забирают вовсе"]
+    with pd.ExcelWriter(OUT) as writer:
+        left.to_excel(writer, sheet_name="ОСТАТОК", index=False)
+        dead.to_excel(writer, sheet_name="НЕ ЗАБИРАЮТ", index=False)
+        for name, frame in (("ОСТАТОК", left), ("НЕ ЗАБИРАЮТ", dead)):
+            format_sheet(writer.sheets[name], frame)
+
+
+def format_sheet(sheet, frame):
+    titles = [str(c.value) for c in sheet[1]]
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = HEADER_FILL
+        cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+
+    widths = {"Товар": 70, "Статус": 20, "Срок годности": 14, "Штрихкод": 15}
+    for index, title in enumerate(titles, start=1):
+        letter = get_column_letter(index)
+        sheet.column_dimensions[letter].width = widths.get(title, 14)
+        if "руб" in title or "шт" in title:
+            for row in sheet.iter_rows(min_row=2, min_col=index, max_col=index):
+                row[0].number_format = "# ##0"
+
+    # Позиции, которые не берут вовсе, подсвечиваем: их сбывать в первую очередь.
+    status = titles.index("Статус")
+    for row in sheet.iter_rows(min_row=2, max_row=len(frame) + 1):
+        if row[status].value == "не забирают вовсе":
+            for cell in row:
+                cell.fill = DEAD_FILL
+
+    total = len(frame) + 2
+    sheet.cell(total, 1, "ИТОГО").font = Font(bold=True)
+    for title in ("Остаётся, шт", "Остаток, руб", "Выручка по потолку, руб"):
+        if title not in titles:
+            continue
+        column = titles.index(title) + 1
+        letter = get_column_letter(column)
+        cell = sheet.cell(total, column)
+        cell.value = f"=SUM({letter}2:{letter}{len(frame) + 1})"
+        cell.font = Font(bold=True)
+        cell.fill = TOTAL_FILL
+        cell.number_format = "# ##0"
+    sheet.freeze_panes = "B2"
+
+
 def main(stock_path, price_path):
     stock = read_stock(stock_path)
     stock["Ключ"] = stock["Товар"].map(key)
@@ -103,7 +157,13 @@ def main(stock_path, price_path):
     left = table[table["Остаётся, шт"] > 0].sort_values("Остаток, руб", ascending=False)
     dead = table[(table["Заберут, шт"] == 0) & (table["Остаётся, шт"] > 0)]
 
-    table.to_excel(OUT, index=False)
+    columns = ["Товар", "Срок годности", "Всего, шт", "Заберут, шт", "Остаётся, шт",
+               "Себестоимость, руб", "Остаток, руб", "Потолок РФ, руб",
+               "Наценка до потолка, %", "Выручка по потолку, руб", "Штрихкод"]
+    left = left.reindex(columns=columns)
+    left.insert(1, "Статус", ["не забирают вовсе" if q == 0 else "забирают частично"
+                              for q in table.loc[left.index, "Заберут, шт"]])
+    write_excel(left, table)
 
     print(f"Позиций всего: {len(table)}   остается на складе: {len(left)}   "
           f"из них не забирают вовсе: {len(dead)}")
