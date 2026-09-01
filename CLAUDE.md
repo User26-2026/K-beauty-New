@@ -16,12 +16,15 @@
 - `data/unit_economics/Celimax_unit_model.xlsx` — основной файл юнит-экономики.
 - `data/stock_costs/ОСТАТКИ_КОРЕЯ_03.06.xlsx` — актуальная себестоимость, брать желтую колонку `Себестоимость по последнему приходу`.
 - `data/stock_costs/Остатки_25.05.2026_priorities.xlsx` — старый файл с цветами приоритетов.
-- `data/price_lists/` — прайсы, полученные от брендов напрямую.
+- `data/archive/brand_pricelists_unknown_origin/` — десять прайсов брендов,
+  залитых ботом до начала работы. Поставщик по ним не установлен, в анализ
+  не берутся.
 - `data/price_lists/<поставщик>/` — по папке на каждого поставщика-посредника.
-  Сейчас есть `classic/` (Классик), `ge_global/` (G&E Global, менеджер Инна —
-  ее файлы приходят с именами на «Инна»), `glowbeauty/` (GlowBeauty, менеджер
-  Асель), `annecy/` (Аннеси, annecy.kr) и `papacosmetic/` (Papa Cosmetic,
-  Кимпхо, базис EXW). Все корейские. Правила именования и расчета
+  Корея: `classic/` (Классик), `fineskin/` (FINESKIN), `ge_global/`
+  (G&E Global, менеджер Инна — ее файлы приходят с именами на «Инна»),
+  `glowbeauty/` (GlowBeauty, менеджер Асель), `annecy/` (Аннеси, annecy.kr),
+  `papacosmetic/` (Papa Cosmetic, Кимпхо). Россия: `keauty/`, `koreatrade/`,
+  `safiya/`. Киргизия: `korshop/`. Правила именования и расчета
   себестоимости — в README внутри папки поставщика.
 - `tools/import_uploads.py` — переносит загруженные прайсы в папку поставщика.
 - `tools/parse_price_lists.py` — сводит прайсы всех поставщиков в

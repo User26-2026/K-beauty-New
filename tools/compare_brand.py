@@ -25,8 +25,11 @@ RATE = 0.058          # рублей за вону, тот же курс, что
 IMPORT = 1.4          # логистика, пошлина и приемка
 
 
-def load_brand(brand):
-    df = pd.read_excel(SRC)
+def load_brand(brand, country):
+    df = pd.read_excel(SRC, dtype={"Штрихкод": str})
+    # Цены сравнимы только внутри одной страны: у поставщиков из разных стран
+    # разный маршрут и разные расходы после отгрузки.
+    df = df[df["Страна"] == country]
     mask = (df["Бренд"].fillna("").astype(str).str.upper().str.contains(brand.upper())
             | df["Название EN"].fillna("").astype(str).str.upper().str.contains(brand.upper()))
     rows = df[mask].copy()
@@ -118,13 +121,19 @@ def paint_overpay(worksheet, first_col, last_col, first_row, last_row):
             cell.number_format = "0.0\%"
 
 
-def main(brand, min_diff):
+def main(brand, min_diff, country):
     if not os.path.exists(SRC):
         raise SystemExit(f"Нет файла {SRC} — сначала запустите parse_price_lists.py")
 
-    rows = load_brand(brand)
+    rows = load_brand(brand, country)
     if rows.empty:
-        raise SystemExit(f"Бренд {brand} не найден")
+        raise SystemExit(f"Бренд {brand} не найден в стране {country}")
+
+    currencies = sorted(rows["Валюта"].dropna().unique())
+    # Внутри страны валюта обычно одна; где их две, считаем в рублях.
+    column = "Цена за штуку (сводно)" if len(currencies) == 1 else "Цена за штуку, руб"
+    money = currencies[0] if len(currencies) == 1 else "RUB"
+    print(f"Страна {country}, сравниваем в {money}")
 
     # Фасовку сводим по штрихкоду: часть поставщиков объем не пишет вовсе.
     rows, pack_conflicts = unify_packs(rows)
@@ -133,14 +142,14 @@ def main(brand, min_diff):
               f"позиций, напр. {', '.join(pack_conflicts[:3])}")
 
     # У одного поставщика товар может встретиться дважды — берем дешевле.
-    best = (rows.sort_values("Цена за штуку (сводно)")
+    best = (rows.sort_values(column)
                 .drop_duplicates(["Штрихкод", "Поставщик"]))
     suppliers = sorted(best["Поставщик"].unique())
     print(f"{brand}: SKU со штрихкодом по поставщикам")
     print(best.groupby("Поставщик").size().to_string())
 
     # Сравниваем цену за штуку: у одного поставщика это может быть набор.
-    prices = best.pivot(index="Штрихкод", columns="Поставщик", values="Цена за штуку (сводно)")
+    prices = best.pivot(index="Штрихкод", columns="Поставщик", values=column)
     units = best.pivot(index="Штрихкод", columns="Поставщик", values="Единица цены")
     units.columns = [f"{c}: единица" for c in units.columns]
     bases = best.pivot(index="Штрихкод", columns="Поставщик", values="Базис")
@@ -178,7 +187,7 @@ def main(brand, min_diff):
     only_one["Есть только у"] = only_one[price_cols].apply(
         lambda row: row.dropna().index[0] if row.notna().any() else "", axis=1)
 
-    out_path = os.path.join(OUT_DIR, f"brand_{re.sub(r'[^a-z0-9]+', '_', brand.lower())}_by_supplier.xlsx")
+    out_path = os.path.join(OUT_DIR, f"brand_{re.sub(r'[^a-z0-9]+', '_', brand.lower())}_{country.lower()}_by_supplier.xlsx")
     overpay = overpay_table(prices.loc[shared.index], info.loc[shared.index],
                             bases.loc[shared.index])
     overpay = overpay.sort_values("Мин. цена, KRW", ascending=False)
@@ -221,5 +230,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("brand", help="название бренда, часть тоже подойдет")
     parser.add_argument("--min-diff", type=float, default=0.0, help="порог расхождения, %%")
+    parser.add_argument("--country", default="KR", help="страна поставщиков: KR, RU или KG")
     ns = parser.parse_args()
-    main(ns.brand, ns.min_diff)
+    main(ns.brand, ns.min_diff, ns.country)

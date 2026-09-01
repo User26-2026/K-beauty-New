@@ -30,8 +30,7 @@ from price_unit import detect as detect_price_unit
 PRICE_ROOT = "data/price_lists"
 OUT_DIR = "outputs"
 
-# Имя папки поставщика -> как называем его в отчетах. Файлы, лежащие прямо
-# в price_lists, — это прайсы, полученные от брендов напрямую.
+# Имя папки поставщика -> как называем его в отчетах.
 # Страна и валюта нужны, чтобы не сравнивать поставщиков из разных стран:
 # у них разный маршрут и разные расходы после отгрузки.
 SUPPLIERS = {
@@ -41,7 +40,6 @@ SUPPLIERS = {
     "ge_global": ("G&E Global", "KR", "KRW"),
     "glowbeauty": ("GlowBeauty", "KR", "KRW"),
     "papacosmetic": ("Papa Cosmetic", "KR", "KRW"),
-    "price_lists": ("Прямой прайс бренда", "KR", "KRW"),
     "koreatrade": ("KoreaTrade", "RU", "RUB"),
     "korshop": ("Korshop", "KG", "USD"),
     "keauty": ("KEAUTY", "RU", "RUB"),
@@ -53,10 +51,8 @@ SUPPLIERS = {
 
 
 def supplier_dirs():
-    """Папки поставщиков: сам price_lists и любая подпапка с прайсами внутри."""
+    """Папки поставщиков: подпапки price_lists с прайсами внутри."""
     found = []
-    if price_files(PRICE_ROOT):
-        found.append(PRICE_ROOT)
     for path in sorted(glob.glob(os.path.join(PRICE_ROOT, "*"))):
         if os.path.isdir(path) and price_files(path):
             found.append(path)
