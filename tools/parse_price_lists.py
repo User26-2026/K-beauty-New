@@ -85,9 +85,10 @@ IMPORT_MULTIPLIER = 1.4
 COLUMN_PATTERNS = {
     # 구분/Division в прайсах — порядковый номер строки, не бренд.
     "brand": [r"^brand$", r"^бренд$", r"^бренд\b"],
-    # SAFIYA подписывает штрихкод как GTIN.
+    # SAFIYA подписывает штрихкод как GTIN, G&E Global — как EAN/UPC.
     "code": [r"sku\s*no", r"^code$", r"product\s*code", r"sap\s*code", r"^артикул$"],
-    "barcode": [r"bar\s*code", r"barcode", r"바코드", r"штрихкод", r"^gtin$"],
+    "barcode": [r"bar\s*code", r"barcode", r"바코드", r"штрихкод", r"^gtin$",
+                r"^ean(\s*/\s*upc)?$", r"^upc$", r"ean\s*code"],
     # Названия: сначала колонки с явной пометкой языка (STRONG_PATTERNS),
     # потом общие подписи. Где обе колонки подписаны одинаково, корейская
     # идет первой, поэтому name_kr проверяется раньше name_en.

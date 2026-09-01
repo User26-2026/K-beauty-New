@@ -134,14 +134,20 @@ def brand_stats(prices, info, suppliers):
         rivals = {s: v for s, v in overpays.items() if s != leader}
         second = min(rivals, key=rivals.get) if rivals else None
 
-        # Медиана может совпасть у двоих. Тогда решает корзина: считаем ее
-        # по позициям, которые есть и у лидера, и у соперника.
-        basket_gap = None
-        if second:
-            both = block[leader].notna() & block[second].notna()
-            if both.any() and block.loc[both, leader].sum():
-                basket_gap = round(
-                    (block.loc[both, second].sum() / block.loc[both, leader].sum() - 1) * 100, 1)
+        # Медиана говорит, кто чаще дешевле, а платим мы за корзину. Считаем
+        # ее по позициям, которые есть у обоих, и если корзина у соперника
+        # ниже — лидером ставим его: побеждает та цена, которую мы заплатим.
+        def gap(cheap, rival):
+            both = block[cheap].notna() & block[rival].notna()
+            if not both.any() or not block.loc[both, cheap].sum():
+                return None
+            return round((block.loc[both, rival].sum() / block.loc[both, cheap].sum() - 1) * 100, 1)
+
+        basket_gap = gap(leader, second) if second else None
+        if basket_gap is not None and basket_gap < 0:
+            leader, second = second, leader
+            rivals = {s: v for s, v in overpays.items() if s != leader}
+            basket_gap = gap(leader, second)
 
         record.update({
             "Поставщиков": len(overpays),
