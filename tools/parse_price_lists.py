@@ -54,12 +54,18 @@ SUPPLIERS = {
 def supplier_dirs():
     """Папки поставщиков: сам price_lists и любая подпапка с прайсами внутри."""
     found = []
-    if glob.glob(os.path.join(PRICE_ROOT, "*.xls*")):
+    if price_files(PRICE_ROOT):
         found.append(PRICE_ROOT)
     for path in sorted(glob.glob(os.path.join(PRICE_ROOT, "*"))):
-        if os.path.isdir(path) and glob.glob(os.path.join(path, "*.xls*")):
+        if os.path.isdir(path) and price_files(path):
             found.append(path)
     return found
+
+
+def price_files(directory):
+    """Прайсы в папке: и таблицы, и выгрузки в CSV."""
+    return sorted(glob.glob(os.path.join(directory, "*.xls*"))
+                  + glob.glob(os.path.join(directory, "*.csv")))
 
 
 def supplier_info(path):
@@ -464,6 +470,36 @@ def pick_sheets(sheet_names):
     return sheets
 
 
+class CsvSheet:
+    """Лист из CSV в том же виде, что дает openpyxl."""
+
+    def __init__(self, rows):
+        self._rows = rows
+        self.max_row = len(rows)
+        self.max_column = max((len(r) for r in rows), default=0)
+
+    def iter_rows(self, min_row=1, max_row=None, values_only=True):
+        last = min(max_row or self.max_row, self.max_row)
+        for row in self._rows[min_row - 1:last]:
+            yield tuple(cell if cell != "" else None for cell in row)
+
+
+class CsvWorkbook:
+    """Прайс в CSV: часть файлов приходит из Google Диска уже текстом."""
+
+    def __init__(self, path):
+        import csv
+        with open(path, newline="", encoding="utf-8-sig") as handle:
+            self._rows = list(csv.reader(handle))
+        self.sheetnames = ["CSV"]
+
+    def __getitem__(self, name):
+        return CsvSheet(self._rows)
+
+    def close(self):
+        self._rows = []
+
+
 class LegacySheet:
     """Лист старого .xls в том же виде, что дает openpyxl."""
 
@@ -494,6 +530,8 @@ class LegacyWorkbook:
 
 
 def open_workbook(path):
+    if path.lower().endswith(".csv"):
+        return CsvWorkbook(path)
     if path.lower().endswith(".xls"):
         return LegacyWorkbook(path)
     return openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -529,7 +567,7 @@ def main(paths, rate, usd, only_supplier):
         jobs = [
             (path,) + supplier_info(d)
             for d in dirs
-            for path in sorted(glob.glob(os.path.join(d, "*.xls*")))
+            for path in price_files(d)
         ]
 
     all_records = []
