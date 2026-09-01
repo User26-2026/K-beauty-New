@@ -490,7 +490,12 @@ class CsvWorkbook:
     def __init__(self, path):
         import csv
         with open(path, newline="", encoding="utf-8-sig") as handle:
-            self._rows = list(csv.reader(handle))
+            sample = handle.read(8192)
+            handle.seek(0)
+            # Excel сохраняет CSV с точкой с запятой, когда системный
+            # разделитель дробной части — запятая.
+            delimiter = ";" if sample.count(";") > sample.count(",") else ","
+            self._rows = list(csv.reader(handle, delimiter=delimiter))
         self.sheetnames = ["CSV"]
 
     def __getitem__(self, name):

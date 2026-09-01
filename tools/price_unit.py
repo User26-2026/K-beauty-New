@@ -52,7 +52,7 @@ def _from_volume(volume):
     if single and int(single.group(1)) > 1:
         return PIECE, int(single.group(1))
 
-    if re.search(r"\b(set|kit)\b|세트", volume, re.I):
+    if re.search(r"\b\d*\s*(set|kit)\b|세트", volume, re.I):
         return PACK, None
     return None
 
@@ -64,7 +64,7 @@ def _from_name(name):
     multiplied = re.search(MULTIPLIER, name, re.I)
     if multiplied and int(multiplied.group(1)) > 1:
         return PACK, int(multiplied.group(1))
-    if re.search(r"\b(set|kit)\b|세트", name, re.I):
+    if re.search(r"\b\d*\s*(set|kit)\b|세트", name, re.I):
         return PACK, None
     return None
 
