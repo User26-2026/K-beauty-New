@@ -21,8 +21,7 @@ from openpyxl.utils import get_column_letter
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
-RATE = 0.058
-IMPORT = 1.4
+from rates import IMPORT_MULTIPLIER as IMPORT, KRW_RUB as RATE
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 BEST_FILL = PatternFill("solid", fgColor="E2EFDA")

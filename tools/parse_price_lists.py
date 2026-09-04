@@ -76,8 +76,7 @@ DEFAULT_BASIS = "EXW"
 BASIS_WORDS = r"\b(FOB|EXW|CIF|CIP|DAP|DDP|FCA)\b"
 
 # Курсы ЦБ, рублей за единицу валюты. Обновляем на дату расчета.
-KRW_RUB = 0.058
-USD_RUB = 87.0
+from rates import KRW_RUB, USD_RUB
 # Логистика, пошлина и приемка сверх закупочной цены.
 IMPORT_MULTIPLIER = 1.4
 

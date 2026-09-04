@@ -23,8 +23,7 @@ from price_unit import unify_packs
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
-RATE = 0.058          # рублей за вону
-IMPORT = 1.4          # логистика, пошлина и приемка
+from rates import IMPORT_MULTIPLIER as IMPORT, KRW_RUB as RATE
 MIN_COVERAGE = 0.5    # лидером бренда считаем только того, у кого есть половина позиций
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")

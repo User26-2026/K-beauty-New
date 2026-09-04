@@ -19,6 +19,7 @@ import re
 import pandas as pd
 
 from price_unit import unify_packs
+from rates import IMPORT_MULTIPLIER, KRW_RUB
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
@@ -123,13 +124,13 @@ def main(min_diff):
             "Цена за шт, KRW": cheapest["Цена за штуку (сводно)"],
             "Цена в прайсе, KRW": cheapest["Закупка, KRW"],
             "Единица": cheapest["Единица цены"],
-            "Себестоимость штуки, руб": round(cheapest["Цена за штуку (сводно)"] * 0.058 * 1.4, 2),
+            "Себестоимость штуки, руб": round(cheapest["Цена за штуку (сводно)"] * KRW_RUB * IMPORT_MULTIPLIER, 2),
             "Дороже у": priciest["Поставщик"],
             "Цена за шт дороже, KRW": priciest["Цена за штуку (сводно)"],
             "Единица у второго": priciest["Единица цены"],
             "Выгода, %": round(diff, 1),
             "Выгода, руб": round((priciest["Цена за штуку (сводно)"]
-                                  - cheapest["Цена за штуку (сводно)"]) * 0.058 * 1.4, 2),
+                                  - cheapest["Цена за штуку (сводно)"]) * KRW_RUB * IMPORT_MULTIPLIER, 2),
             "Товар у второго": priciest["Название EN"],
             "Схожесть названий": None if similarity is None else round(similarity, 2),
             "Объем у второго": priciest["Объем"],

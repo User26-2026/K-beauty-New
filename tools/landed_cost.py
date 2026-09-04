@@ -25,7 +25,7 @@ INVOICE = "data/shipments/2026-09_container_invoice.xlsx"
 MANIFEST = "data/shipments/2026-09_truck_manifest.csv"
 PRICES = "outputs/prices_normalized.xlsx"
 OUT = "outputs/landed_cost_2026-09.xlsx"
-KRW_RUB = 0.058
+from rates import KRW_RUB
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 ALERT_FILL = PatternFill("solid", fgColor="FFF2CC")

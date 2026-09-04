@@ -21,8 +21,7 @@ from price_unit import unify_packs
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
-RATE = 0.058          # рублей за вону
-IMPORT = 1.4          # логистика, пошлина и приемка
+from rates import IMPORT_MULTIPLIER as IMPORT, KRW_RUB as RATE
 
 TRANSLIT = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh",
             "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
