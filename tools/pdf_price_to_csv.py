@@ -18,7 +18,39 @@ import re
 
 import pdfplumber
 
-HEADER_WORDS = ("наименование", "штрихкод", "изображение")
+HEADER_WORDS = ("наименование", "штрихкод", "изображение", "картинка")
+
+# Раскладка колонок отличается у поставщиков, но обе таблицы размечены
+# линиями, поэтому достаточно знать, где что стоит.
+LAYOUTS = {
+    # Korea Global: картинка, название, штрихкод, цена в сомах, цена в долларах.
+    "koreaglobal": {"brand": 1, "name": 2, "barcode": 3, "kgs": 4, "usd": 5},
+    # Aibeauty: картинка, штрихкод, название, пусто, цена в долларах.
+    "aibeauty": {"brand": 1, "barcode": 2, "name": 3, "kgs": None, "usd": 5},
+}
+
+
+def detect_layout(pages):
+    """Раскладку узнаем по данным, а не по шапке.
+
+    Продолжение прайса приходит отдельным файлом и начинается сразу со
+    строк товара, без заголовков. Поэтому проверяем обе раскладки и берем
+    ту, где в колонке штрихкода действительно стоят штрихкоды.
+    """
+    scores = dict.fromkeys(LAYOUTS, 0)
+    for page in pages[:2]:
+        for row in page.extract_table() or []:
+            cells = [clean(cell) for cell in row]
+            if len(cells) < 6:
+                continue
+            for name, columns in LAYOUTS.items():
+                digits = re.sub(r"\D", "", cells[columns["barcode"]])
+                if len(digits) >= 12 and to_number(cells[columns["usd"]]):
+                    scores[name] += 1
+    return max(scores, key=scores.get)
+
+
+BRAND_IN_NAME = re.compile(r"^\(([^)]{2,40})\)")
 
 
 def clean(value):
@@ -34,26 +66,32 @@ def to_number(value):
 def rows_from_pdf(path):
     brand = ""
     with pdfplumber.open(path) as pdf:
+        columns = LAYOUTS[detect_layout(pdf.pages)]
         for page in pdf.pages:
             for row in page.extract_table() or []:
                 cells = [clean(cell) for cell in row]
                 if len(cells) < 6:
                     continue
-                _, picture, name, barcode, price_kgs, price_usd = cells[:6]
+                picture = cells[columns["brand"]]
+                name = cells[columns["name"]].replace("\n", " ")
                 if any(word in picture.lower() for word in HEADER_WORDS):
                     continue
+                price_usd = to_number(cells[columns["usd"]])
                 # Строка с одним заполненным полем в колонке картинки — бренд.
                 if picture and not name and not price_usd:
                     brand = picture
                     continue
                 if not name:
                     continue
+                # Aibeauty пишет бренд прямо в названии: «(Anua) Крем ...».
+                inside = BRAND_IN_NAME.match(name)
                 yield {
-                    "Бренд": brand,
-                    "Наименование": name.replace("\n", " "),
-                    "Штрихкод": re.sub(r"\D", "", barcode),
-                    "Цена, сом": to_number(price_kgs),
-                    "Цена, $": to_number(price_usd),
+                    "Бренд": inside.group(1) if inside else brand,
+                    "Наименование": name,
+                    "Штрихкод": re.sub(r"\D", "", cells[columns["barcode"]]),
+                    "Цена, сом": (to_number(cells[columns["kgs"]])
+                                  if columns["kgs"] is not None else ""),
+                    "Цена, $": price_usd,
                 }
 
 

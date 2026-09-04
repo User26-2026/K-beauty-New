@@ -25,12 +25,16 @@
   (G&E Global, менеджер Инна — ее файлы приходят с именами на «Инна»),
   `glowbeauty/` (GlowBeauty, менеджер Асель), `annecy/` (Аннеси, annecy.kr),
   `papacosmetic/` (Papa Cosmetic, Кимпхо). Россия: `keauty/`, `koreatrade/`,
-  `safiya/`. Киргизия: `korshop/`, `koreaglobal/` (Korea Global, Бишкек,
-  менеджер Акмаль, прайс приходит в PDF). Правила именования и расчета
+  `safiya/`. Киргизия: `korshop/`, `koreaglobal/` (Korea Global, менеджер
+  Акмаль) и `aibeauty/` (Дордой) — оба шлют прайс в PDF. Правила именования и расчета
   себестоимости — в README внутри папки поставщика.
 - `tools/import_uploads.py` — переносит загруженные прайсы в папку поставщика.
-- `tools/pdf_price_to_csv.py` — прайс из PDF в CSV: Korea Global шлет
-  печатную форму из 1С, таблица там размечена линиями и читается как есть.
+- `tools/pdf_price_to_csv.py` — прайс из PDF в CSV: бишкекские поставщики
+  шлют печатную форму из 1С. Раскладку колонок определяем по данным:
+  продолжение прайса приходит отдельным файлом, без шапки.
+- `tools/compare_regions.py` — на сколько Бишкек дороже Кореи:
+  `outputs/regions_kg_vs_kr.xlsx`. Считаем в рублях от двух баз — от
+  корейской цены EXW и от нее же с множителем импорта.
 - `tools/parse_price_lists.py` — сводит прайсы всех поставщиков в
   `outputs/prices_normalized.xlsx` и считает себестоимость.
 - `tools/compare_suppliers.py` — ищет один товар у разных поставщиков и

@@ -21,7 +21,7 @@ from price_unit import unify_packs
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
-from rates import IMPORT_MULTIPLIER as IMPORT, KRW_RUB as RATE
+from rates import rub_per_unit
 
 TRANSLIT = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh",
             "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
@@ -82,24 +82,25 @@ def positions(df, first, second, column):
     return table
 
 
-def diff_columns(table, first, second):
+def diff_columns(table, first, second, money, rate):
     pair = table[[first, second]]
     table["Дешевле у"] = pair.idxmin(axis=1)
-    table["Мин, KRW"] = pair.min(axis=1)
-    table["Макс, KRW"] = pair.max(axis=1)
+    low, high = f"Мин, {money}", f"Макс, {money}"
+    table[low] = pair.min(axis=1)
+    table[high] = pair.max(axis=1)
     # Насколько дешевле победитель по отношению к проигравшему.
-    table["Дешевле на, %"] = ((1 - table["Мин, KRW"] / table["Макс, KRW"]) * 100).round(1)
+    table["Дешевле на, %"] = ((1 - table[low] / table[high]) * 100).round(1)
     # Насколько дороже проигравший по отношению к победителю — это переплата.
-    table["Переплата, %"] = ((table["Макс, KRW"] / table["Мин, KRW"] - 1) * 100).round(1)
-    table["Разница, KRW"] = (table["Макс, KRW"] - table["Мин, KRW"]).round(0)
-    table["Разница, руб"] = (table["Разница, KRW"] * RATE * IMPORT).round(0)
+    table["Переплата, %"] = ((table[high] / table[low] - 1) * 100).round(1)
+    table[f"Разница, {money}"] = (table[high] - table[low]).round(0)
+    table["Разница, руб"] = (table[f"Разница, {money}"] * rate).round(0)
     # Расхождение больше 30% бывает настоящим, но чаще это разная единица цены
     # или опечатка в прайсе. Из рейтинга не выкидываем, помечаем на сверку.
     table["Проверить у менеджера"] = table["Переплата, %"].ge(30).map({True: "да", False: ""})
     return table
 
 
-def by_brand(shared, first, second):
+def by_brand(shared, first, second, money, rate):
     """Свод по брендам: где дешевле, на сколько и какая корзина."""
     rows = []
     for brand, group in shared.groupby(shared["Бренд"].fillna("БЕЗ БРЕНДА")):
@@ -115,11 +116,11 @@ def by_brand(shared, first, second):
             f"Дешевле у {first}": wins_first,
             f"Дешевле у {second}": wins_second,
             "Медиана разницы, %": round(group["Дешевле на, %"].median(), 1),
-            f"Корзина {first}, KRW": round(basket_first),
-            f"Корзина {second}, KRW": round(basket_second),
+            f"Корзина {first}, {money}": round(basket_first),
+            f"Корзина {second}, {money}": round(basket_second),
             "Корзина дешевле у": cheaper,
             "Корзина дешевле на, %": round(gap, 1),
-            "Разница корзины, руб": round(abs(basket_first - basket_second) * RATE * IMPORT),
+            "Разница корзины, руб": round(abs(basket_first - basket_second) * rate),
         })
     return pd.DataFrame(rows).sort_values("Общих позиций", ascending=False)
 
@@ -186,6 +187,10 @@ def main(first, second, country):
     if df.empty:
         raise SystemExit(f"Нет позиций для {first} и {second} в стране {country}")
     df["Бренд"] = brand_of(df)
+    # Валюта у страны своя: по Киргизии цены в долларах, и в рубли их
+    # пересчитывает доллар, а не вона.
+    money = sorted(df["Валюта"].dropna().unique())[0]
+    rate = rub_per_unit(money, imported=country == "KR")
 
     df, conflicts = unify_packs(df)
     if conflicts:
@@ -194,13 +199,13 @@ def main(first, second, country):
     column = "Цена за штуку (сводно)"
     table = positions(df, first, second, column)
     shared = table[table[first].notna() & table[second].notna()].copy()
-    shared = diff_columns(shared, first, second)
+    shared = diff_columns(shared, first, second, money, rate)
     shared = shared.sort_values(["Бренд", "Переплата, %"], ascending=[True, False])
 
     only_first = table[table[first].notna() & table[second].isna()].copy()
     only_second = table[table[second].notna() & table[first].isna()].copy()
 
-    brands = by_brand(shared, first, second)
+    brands = by_brand(shared, first, second, money, rate)
     basket_first = shared[first].sum()
     basket_second = shared[second].sum()
     cheaper = first if basket_first < basket_second else second
@@ -218,12 +223,12 @@ def main(first, second, country):
          "Значение": round(shared["Дешевле на, %"].median(), 1)},
         {"Показатель": "Средняя разница по позициям, %",
          "Значение": round(shared["Дешевле на, %"].mean(), 1)},
-        {"Показатель": f"Корзина общих позиций, {first}, KRW", "Значение": round(basket_first)},
-        {"Показатель": f"Корзина общих позиций, {second}, KRW", "Значение": round(basket_second)},
+        {"Показатель": f"Корзина общих позиций, {first}, {money}", "Значение": round(basket_first)},
+        {"Показатель": f"Корзина общих позиций, {second}, {money}", "Значение": round(basket_second)},
         {"Показатель": "Корзина дешевле у", "Значение": cheaper},
         {"Показатель": "Корзина дешевле на, %", "Значение": round(gap, 1)},
         {"Показатель": "Разница корзины, руб",
-         "Значение": round(abs(basket_first - basket_second) * RATE * IMPORT)},
+         "Значение": round(abs(basket_first - basket_second) * rate)},
         {"Показатель": "Позиций с расхождением 30%+ (на сверку)",
          "Значение": int((shared["Проверить у менеджера"] == "да").sum())},
     ])
@@ -250,7 +255,7 @@ def main(first, second, country):
         for name in ("БРЕНДЫ", f"ТОЛЬКО {first}"[:31], f"ТОЛЬКО {second}"[:31]):
             format_sheet(book[name])
 
-    print(f"\n{first} против {second}, {country}, цены в KRW за штуку")
+    print(f"\n{first} против {second}, {country}, цены в {money} за штуку")
     print(total.to_string(index=False))
     print("\nПо брендам:")
     print(brands.to_string(index=False))
