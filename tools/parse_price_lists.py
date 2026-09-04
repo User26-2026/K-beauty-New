@@ -47,6 +47,7 @@ SUPPLIERS = {
     # внутри РФ, поэтому сравниваем с российскими. Прайс в долларах.
     "safiya": ("SAFIYA", "RU", "USD"),
     "aibeauty": ("Aibeauty", "KG", "USD"),
+    "koreaglobal": ("Korea Global", "KG", "USD"),
 }
 
 

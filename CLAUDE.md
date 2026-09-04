@@ -25,9 +25,12 @@
   (G&E Global, менеджер Инна — ее файлы приходят с именами на «Инна»),
   `glowbeauty/` (GlowBeauty, менеджер Асель), `annecy/` (Аннеси, annecy.kr),
   `papacosmetic/` (Papa Cosmetic, Кимпхо). Россия: `keauty/`, `koreatrade/`,
-  `safiya/`. Киргизия: `korshop/`. Правила именования и расчета
+  `safiya/`. Киргизия: `korshop/`, `koreaglobal/` (Korea Global, Бишкек,
+  менеджер Акмаль, прайс приходит в PDF). Правила именования и расчета
   себестоимости — в README внутри папки поставщика.
 - `tools/import_uploads.py` — переносит загруженные прайсы в папку поставщика.
+- `tools/pdf_price_to_csv.py` — прайс из PDF в CSV: Korea Global шлет
+  печатную форму из 1С, таблица там размечена линиями и читается как есть.
 - `tools/parse_price_lists.py` — сводит прайсы всех поставщиков в
   `outputs/prices_normalized.xlsx` и считает себестоимость.
 - `tools/compare_suppliers.py` — ищет один товар у разных поставщиков и
@@ -100,7 +103,8 @@
 
 - **KR** — Классик, G&E Global, GlowBeauty, Аннеси, Papa Cosmetic и прямые
   прайсы брендов. Валюта KRW.
-- **KG** — korshop.one, Aibeauty (Дордой, Бишкек). Валюта USD. Это не канал
+- **KG** — korshop.one, Korea Global (Акмаль), Aibeauty (Дордой, Бишкек).
+  Валюта USD. Это не канал
   поставки, а ориентир по цене.
 - **RU** — KEAUTY (Москва), KoreaTrade и SAFIYA. Задают реальный потолок
   цены для российского оптового покупателя. У KEAUTY и KoreaTrade прайсы в
