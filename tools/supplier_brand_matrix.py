@@ -23,7 +23,7 @@ from price_unit import unify_packs
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
-from rates import IMPORT_MULTIPLIER as IMPORT, KRW_RUB as RATE
+from rates import rub_per_unit
 MIN_COVERAGE = 0.5    # лидером бренда считаем только того, у кого есть половина позиций
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
@@ -107,7 +107,7 @@ def price_table(df, column):
     return info.join(prices), prices
 
 
-def brand_stats(prices, info, suppliers):
+def brand_stats(prices, info, suppliers, rate=1.0):
     """По каждому бренду: у кого дешевле и на сколько процентов дороже остальные."""
     comparable = prices[prices.notna().sum(axis=1) > 1]
     rows, matrix, baskets = [], [], []
@@ -158,11 +158,11 @@ def brand_stats(prices, info, suppliers):
             "Средняя переплата у остальных, %": (
                 round(sum(rivals.values()) / len(rivals), 1) if rivals else 0.0),
             "Переплата, если брать не у лидера, руб": round(
-                max(loss.values()) * RATE * IMPORT) if loss else 0,
+                max(loss.values()) * rate) if loss else 0,
         })
         rows.append(record)
         matrix.append({"Бренд": brand, **overpays})
-        baskets.append({"Бренд": brand, **{s: round(v * RATE * IMPORT) for s, v in loss.items()}})
+        baskets.append({"Бренд": brand, **{s: round(v * rate) for s, v in loss.items()}})
 
     order = ["Бренд", "Позиций в сравнении", "Поставщиков", "Дешевле всех",
              "Покрытие лидера, %", "Второй по цене", "Второй дороже, % (медиана)",
@@ -211,15 +211,16 @@ def exclusive(df, prices, suppliers):
     return pd.DataFrame(rows).sort_values("SKU", ascending=False)
 
 
-def positions_sheet(table, prices, suppliers):
+def positions_sheet(table, prices, suppliers, money, rate):
     comparable = prices.notna().sum(axis=1) > 1
     rows = table[comparable.reindex(table.index, fill_value=False)].copy()
     columns = [s for s in suppliers if s in rows.columns]
-    rows["Мин, KRW"] = rows[columns].min(axis=1)
-    rows["Макс, KRW"] = rows[columns].max(axis=1)
+    low, high = f"Мин, {money}", f"Макс, {money}"
+    rows[low] = rows[columns].min(axis=1)
+    rows[high] = rows[columns].max(axis=1)
     rows["Дешевле у"] = rows[columns].idxmin(axis=1)
-    rows["Разброс, %"] = ((rows["Макс, KRW"] / rows["Мин, KRW"] - 1) * 100).round(1)
-    rows["Экономия, руб"] = ((rows["Макс, KRW"] - rows["Мин, KRW"]) * RATE * IMPORT).round(0)
+    rows["Разброс, %"] = ((rows[high] / rows[low] - 1) * 100).round(1)
+    rows["Экономия, руб"] = ((rows[high] - rows[low]) * rate).round(0)
     rows["Проверить у менеджера"] = rows["Разброс, %"].ge(30).map({True: "да", False: ""})
     return rows.sort_values(["Бренд", "Разброс, %"], ascending=[True, False])
 
@@ -271,6 +272,10 @@ def main(country):
     if not bad.empty:
         print(f"Один штрихкод на разные товары: {len(bad)} — спорные строки убраны")
 
+    # Валюта у страны своя, и в рубли ее пересчитывает свой курс.
+    money = sorted(df["Валюта"].dropna().unique())[0]
+    rate = rub_per_unit(money, imported=country == "KR")
+
     df, conflicts = unify_packs(df)
     if conflicts:
         print(f"Разная фасовка по одному штрихкоду: {len(conflicts)} позиций")
@@ -279,10 +284,10 @@ def main(country):
     table, prices = price_table(df, column)
     info = table[["Бренд", "Название EN", "Объем"]]
 
-    brands, percent, money = brand_stats(prices, info, suppliers)
+    brands, percent, spend = brand_stats(prices, info, suppliers, rate)
     summary = supplier_stats(df, prices, info, brands, suppliers)
     only = exclusive(df, prices, suppliers)
-    positions = positions_sheet(table, prices, suppliers)
+    positions = positions_sheet(table, prices, suppliers, money, rate)
 
     sku = (df.groupby(["Бренд", "Поставщик"])["Штрихкод"].nunique().unstack(fill_value=0)
              .reindex(columns=suppliers, fill_value=0))
@@ -295,7 +300,7 @@ def main(country):
         summary.to_excel(writer, sheet_name="ИТОГО", index=False)
         brands.to_excel(writer, sheet_name="ГДЕ ЗАКУПАТЬ", index=False)
         percent.to_excel(writer, sheet_name="МАТРИЦА %", index=False)
-        money.to_excel(writer, sheet_name="ПЕРЕПЛАТА РУБ", index=False)
+        spend.to_excel(writer, sheet_name="ПЕРЕПЛАТА РУБ", index=False)
         sku.to_excel(writer, sheet_name="SKU ПО ПОСТАВЩИКАМ", index=False)
         positions.to_excel(writer, sheet_name="ПОЗИЦИИ")
         only.to_excel(writer, sheet_name="ТОЛЬКО У ОДНОГО", index=False)

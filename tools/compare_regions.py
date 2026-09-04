@@ -24,13 +24,15 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 import brand_names
-from price_unit import unify_packs
 from rates import IMPORT_MULTIPLIER, rub_per_unit
 from supplier_brand_matrix import split_conflicts
 
 SRC = "outputs/prices_normalized.xlsx"
 OUT_DIR = "outputs"
-COLUMN = "Цена за штуку (сводно)"
+# Между странами сравниваем цену как она напечатана в прайсе: приведение
+# к штуке делит цену на число пэдов в банке у одной стороны и не делит у
+# другой, и позиция уезжает в сто раз.
+COLUMN = "Закупка, KRW"
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 
@@ -44,7 +46,6 @@ def load(country):
     df["Бренд в прайсе"] = df["Бренд"]
     df["Бренд"] = brand_names.resolve(df).fillna("БЕЗ БРЕНДА")
     df, _ = split_conflicts(df)
-    df, _ = unify_packs(df)
     return df
 
 
@@ -96,8 +97,12 @@ def main(base_country, against_country):
     if not rows:
         raise SystemExit("Общих штрихкодов между странами нет")
     items = pd.concat(rows, ignore_index=True).sort_values("Дороже с импортом, %")
+    # Разница в разы — это почти всегда разная фасовка, а не цена.
+    items["Пометка"] = ""
+    items.loc[items["Дороже EXW, %"].abs() > 70, "Пометка"] = "разная фасовка, сверить"
+    checked = items[items["Пометка"] == ""]
 
-    by_supplier = (items.groupby("Поставщик")
+    by_supplier = (checked.groupby("Поставщик")
                    .agg(**{"Общих позиций": ("Товар", "size"),
                            "Медиана дороже EXW, %": ("Дороже EXW, %", "median"),
                            "Медиана дороже с импортом, %": ("Дороже с импортом, %", "median"),
@@ -106,7 +111,7 @@ def main(base_country, against_country):
                    .round(1).reset_index()
                    .sort_values("Медиана дороже с импортом, %"))
 
-    by_brand = (items.groupby("Бренд")
+    by_brand = (checked.groupby("Бренд")
                 .agg(**{"Позиций": ("Товар", "size"),
                         "Медиана дороже EXW, %": ("Дороже EXW, %", "median"),
                         "Медиана дороже с импортом, %": ("Дороже с импортом, %", "median")})
@@ -115,13 +120,16 @@ def main(base_country, against_country):
 
     total = pd.DataFrame([
         {"Показатель": f"Позиций {against_country}, совпавших с {base_country}", "Значение": len(items)},
+        {"Показатель": "Из них годятся для сравнения", "Значение": len(checked)},
+        {"Показатель": "Отложено: разная фасовка",
+         "Значение": int((items["Пометка"] != "").sum())},
         {"Показатель": "Множитель импорта для Кореи", "Значение": IMPORT_MULTIPLIER},
         {"Показатель": "Медиана: дороже корейской цены EXW, %",
-         "Значение": round(items["Дороже EXW, %"].median(), 1)},
+         "Значение": round(checked["Дороже EXW, %"].median(), 1)},
         {"Показатель": "Медиана: дороже нашей себестоимости с импортом, %",
-         "Значение": round(items["Дороже с импортом, %"].median(), 1)},
+         "Значение": round(checked["Дороже с импортом, %"].median(), 1)},
         {"Показатель": "Позиций, где местная цена ниже нашего импорта",
-         "Значение": int((items["Дороже с импортом, %"] < 0).sum())},
+         "Значение": int((checked["Дороже с импортом, %"] < 0).sum())},
     ])
 
     out_path = os.path.join(OUT_DIR, f"regions_{against_country.lower()}_vs_{base_country.lower()}.xlsx")
