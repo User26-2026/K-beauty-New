@@ -7,11 +7,14 @@
 - корейская цена EXW, как она стоит на складе поставщика;
 - она же с доставкой и растаможкой до Бишкека (для Киргизии это 5%) —
   разница с ценой прайса и есть заработок посредника;
-- она же с нашими расходами на импорт в Москву (по контейнеру 30%) —
-  отсюда видно, выгоднее ли везти самим или брать готовое в Бишкеке.
+- она же с нашими расходами на импорт в Москву (по контейнеру 30%).
+
+И главный ответ: во что обойдется товар в Москве по двум маршрутам —
+своим контейнером из Кореи или закупом в Бишкеке с довозом (для Киргизии
+это еще 5%, пошлины нет, ЕАЭС).
 
 Запуск:
-    python3 tools/compare_regions.py --to-base 5 --to-us 30
+    python3 tools/compare_regions.py --to-base 5 --to-us 30 --to-moscow 5
 """
 
 import argparse
@@ -58,7 +61,7 @@ def cheapest(df, imported):
     return best.set_index("Штрихкод"), money
 
 
-def main(base_country, against_country, to_base, to_us):
+def main(base_country, against_country, to_base, to_us, to_moscow):
     base = load(base_country)
     against = load(against_country)
 
@@ -96,6 +99,13 @@ def main(base_country, against_country, to_base, to_us):
             (price / (korea * (1 + to_base / 100)) - 1) * 100).round(1)
         table["Против нашего импорта, %"] = (
             (price / (korea * (1 + to_us / 100)) - 1) * 100).round(1)
+        # Два маршрута до Москвы: свой контейнер из Кореи против закупа в
+        # Бишкеке с довозом. Пошлины на втором нет, страны в ЕАЭС.
+        through = price * (1 + to_moscow / 100)
+        direct = korea * (1 + to_us / 100)
+        table["Через Бишкек в Москве, руб"] = through.round(2)
+        table["Своим импортом в Москве, руб"] = direct.round(2)
+        table["Через Бишкек дешевле на, %"] = ((1 - through / direct) * 100).round(1)
         rows.append(table.reset_index())
 
     if not rows:
@@ -111,8 +121,9 @@ def main(base_country, against_country, to_base, to_us):
                            "Дороже корейской EXW, %": ("Дороже EXW, %", "median"),
                            "Наценка посредника, %": ("Наценка посредника, %", "median"),
                            "Против нашего импорта, %": ("Против нашего импорта, %", "median"),
-                           "Дешевле нашего импорта, позиций":
-                               ("Против нашего импорта, %", lambda values: int((values < 0).sum()))})
+                           "Через Бишкек дешевле на, %": ("Через Бишкек дешевле на, %", "median"),
+                           "Позиций, где через Бишкек выгоднее":
+                               ("Через Бишкек дешевле на, %", lambda values: int((values > 0).sum()))})
                    .round(1).reset_index()
                    .sort_values("Наценка посредника, %"))
 
@@ -120,7 +131,8 @@ def main(base_country, against_country, to_base, to_us):
                 .agg(**{"Позиций": ("Товар", "size"),
                         "Дороже корейской EXW, %": ("Дороже EXW, %", "median"),
                         "Наценка посредника, %": ("Наценка посредника, %", "median"),
-                        "Против нашего импорта, %": ("Против нашего импорта, %", "median")})
+                        "Против нашего импорта, %": ("Против нашего импорта, %", "median"),
+                        "Через Бишкек дешевле на, %": ("Через Бишкек дешевле на, %", "median")})
                 .round(1).reset_index()
                 .sort_values("Позиций", ascending=False))
 
@@ -131,6 +143,21 @@ def main(base_country, against_country, to_base, to_us):
     pivot["Позиций"] = checked.groupby("Бренд").size()
     pivot["Дешевле всех"] = pivot.drop(columns="Позиций").idxmin(axis=1)
     pivot = pivot.sort_values("Позиций", ascending=False).reset_index()
+
+    # По каждому бренду — какой маршрут дешевле и у кого из местных брать.
+    best = (checked.sort_values("Через Бишкек дешевле на, %", ascending=False)
+            .drop_duplicates(["Бренд", "Товар"]))
+    route = (best.groupby("Бренд")
+             .agg(**{"Позиций": ("Товар", "size"),
+                     "Через Бишкек дешевле на, %": ("Через Бишкек дешевле на, %", "median"),
+                     "Позиций в пользу Бишкека":
+                         ("Через Бишкек дешевле на, %", lambda values: int((values > 0).sum()))})
+             .round(1).reset_index())
+    route["Маршрут"] = route["Через Бишкек дешевле на, %"].map(
+        lambda value: "брать в Бишкеке" if value > 0 else "везти свой контейнер")
+    route["У кого в Бишкеке"] = route["Бренд"].map(
+        pivot.set_index("Бренд")["Дешевле всех"])
+    route = route.sort_values("Позиций", ascending=False)
 
     total = pd.DataFrame([
         {"Показатель": f"Позиций {against_country}, совпавших с {base_country}", "Значение": len(items)},
@@ -148,6 +175,11 @@ def main(base_country, against_country, to_base, to_us):
          "Значение": round(checked["Против нашего импорта, %"].median(), 1)},
         {"Показатель": "Позиций, где местная цена ниже нашего импорта",
          "Значение": int((checked["Против нашего импорта, %"] < 0).sum())},
+        {"Показатель": f"Довоз {against_country} -> Москва, %", "Значение": to_moscow},
+        {"Показатель": "Медиана: через Бишкек дешевле своего контейнера на, %",
+         "Значение": round(checked["Через Бишкек дешевле на, %"].median(), 1)},
+        {"Показатель": "Позиций, где выгоднее через Бишкек",
+         "Значение": int((checked["Через Бишкек дешевле на, %"] > 0).sum())},
     ])
 
     out_path = os.path.join(OUT_DIR, f"regions_{against_country.lower()}_vs_{base_country.lower()}.xlsx")
@@ -156,6 +188,7 @@ def main(base_country, against_country, to_base, to_us):
         by_supplier.to_excel(writer, sheet_name="ПО ПОСТАВЩИКАМ", index=False)
         by_brand.to_excel(writer, sheet_name="ПО БРЕНДАМ", index=False)
         pivot.to_excel(writer, sheet_name="НАЦЕНКА ПО ПОСТАВЩИКАМ", index=False)
+        route.to_excel(writer, sheet_name="КАКОЙ МАРШРУТ", index=False)
         items.to_excel(writer, sheet_name="ПОЗИЦИИ", index=False)
 
         for name in writer.book.sheetnames:
@@ -195,5 +228,7 @@ if __name__ == "__main__":
                         help="доставка и растаможка из базовой страны в целевую, %%")
     parser.add_argument("--to-us", type=float, default=30.0,
                         help="наши расходы на импорт в Москву, %%")
+    parser.add_argument("--to-moscow", type=float, default=5.0,
+                        help="довоз из целевой страны в Москву, %%")
     args = parser.parse_args()
-    main(args.base, args.against, args.to_base, args.to_us)
+    main(args.base, args.against, args.to_base, args.to_us, args.to_moscow)
