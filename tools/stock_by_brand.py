@@ -1,14 +1,11 @@
-"""Остатки по брендам и позициям: что ходовое, а что лежит.
+"""Остатки по брендам и позициям: сколько чего лежит и на какие деньги.
 
 Количество берем из плана распределения — там свежий склад и артикул WB.
 Себестоимость — из файла остатков, а где не нашлось, из отчета WB.
-Скорость продаж — из отчета по выкупам: сколько штук ушло за период.
 
-Запас в месяцах = склад / продажи в месяц. Это главная цифра: она сразу
-показывает, где деньги стоят мертво, а где товар вот-вот кончится.
-
-Продажи только по Wildberries и только за период отчета — Озон и опт в
-эту скорость не входят.
+Скорость продаж сюда не выносим: после пожара на складах Wildberries
+цифры продаж не показывают спрос. Ходовой товар отделяем от лежачего в
+tools/illiquid_check.py, там для этого смотрят воронку по двум периодам.
 
 Запуск:
     python3 tools/stock_by_brand.py
@@ -29,7 +26,6 @@ import name_match
 PLAN = "data/shipments/2026-09_plan_raspredeleniya.xlsx"
 STOCK = "data/stock_costs/Остатки_31.08.2026.xlsx"
 SALES = "workspace/wb_audit/sales_profit_with_cogs_2026-04-01_2026-05-24.csv"
-SALES_DAYS = 54
 OUT = "outputs/stock_by_brand.xlsx"
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
@@ -102,7 +98,7 @@ def brand_sheet(rows, money_total, units_total):
     """Лист одного бренда: его товары, деньги и доля в общем складе."""
     columns = ["Наименование", "Артикул WB", "Склад, шт", "Себестоимость, руб",
                "Остаток, руб", "Доля в бренде, %", "Доля в складе, %",
-               "Продажи, шт/мес", "Запас, месяцев", "Статус", "Приход в пути, шт"]
+               "Приход в пути, шт", "Срок годности"]
     table = rows.copy()
     brand_money = table["Остаток, руб"].sum()
     table["Доля в бренде, %"] = (table["Остаток, руб"] / brand_money * 100).round(1) \
@@ -117,44 +113,23 @@ def brand_sheet(rows, money_total, units_total):
         "Остаток, руб": brand_money,
         "Доля в бренде, %": 100.0,
         "Доля в складе, %": round(brand_money / money_total * 100, 1),
-        "Продажи, шт/мес": round(table["Продажи, шт/мес"].sum(), 1),
         "Приход в пути, шт": table["Приход в пути, шт"].sum(),
-        "Статус": f"{table['Склад, шт'].sum() / units_total * 100:.1f}% всех штук склада",
+        "Срок годности": f"{table['Склад, шт'].sum() / units_total * 100:.1f}% всех штук склада",
     })
     return pd.concat([table, pd.DataFrame([total])], ignore_index=True)
-
-
-def status(cover, sold, in_report):
-    """Ходовой товар мерим запасом в месяцах, а не выручкой.
-
-    Позицию, которой нет в отчете продаж, в неликвид не записываем: скорее
-    всего карточка появилась уже после периода отчета.
-    """
-    if not in_report:
-        return "нет данных о продажах"
-    if sold <= 0:
-        return "продаж не было"
-    if cover is None or pd.isna(cover):
-        return "нет данных о продажах"
-    if cover > 12:
-        return "неликвид, запас больше года"
-    if cover > 6:
-        return "затоварен"
-    if cover >= 2:
-        return "нормальный запас"
-    return "ходовой, запас кончается"
 
 
 def main():
     plan = read_plan(PLAN)
     stock = read_stock(STOCK)
-    sales = pd.read_csv(SALES)
-    sales["Артикул WB"] = pd.to_numeric(sales["Артикул WB"], errors="coerce").astype("Int64")
-    sales = sales.groupby("Артикул WB", as_index=False).agg(
-        **{"Продано, шт": ("Выкупы, шт", "sum"), "Продано, руб": ("Выкупы, ₽", "sum"),
-           "Себестоимость из отчета": ("cost", "max"), "Бренд из отчета": ("Бренд", "first")})
+    # Из отчета WB берем только бренд и себестоимость: скорость продаж в
+    # этот файл не выносим — после пожара на складах она не показательна.
+    report = pd.read_csv(SALES, usecols=["Артикул WB", "Бренд", "cost"])
+    report["Артикул WB"] = pd.to_numeric(report["Артикул WB"], errors="coerce").astype("Int64")
+    report = report.groupby("Артикул WB", as_index=False).agg(
+        **{"Себестоимость из отчета": ("cost", "max"), "Бренд из отчета": ("Бренд", "first")})
 
-    table = plan.merge(sales, on="Артикул WB", how="left")
+    table = plan.merge(report, on="Артикул WB", how="left")
 
     pairs = name_match.match(table["Наименование"], stock["Товар в остатках"])
     table["_pair"] = table.index.map(pairs.get)
@@ -169,69 +144,36 @@ def main():
         table.loc[~table["Бренд"].isin(KNOWN), "Наименование"].map(brand_from_name)
 
     table["Остаток, руб"] = (table["Склад, шт"] * table["Себестоимость, руб"]).round(0)
-    table["Продано, шт"] = table["Продано, шт"].fillna(0)
-    table["Продажи, шт/мес"] = (table["Продано, шт"] * 30 / SALES_DAYS).round(1)
-    table["Запас, месяцев"] = (table["Склад, шт"] / table["Продажи, шт/мес"]
-                              ).replace([float("inf")], float("nan")).round(1)
-    table["Есть в отчете продаж"] = table["Бренд из отчета"].notna()
-    table["Статус"] = [status(cover, sold, seen) for cover, sold, seen
-                       in zip(table["Запас, месяцев"], table["Продано, шт"],
-                              table["Есть в отчете продаж"])]
-    table.loc[table["Себестоимость, руб"].isna(), "Статус"] = "нет себестоимости"
     table["Приход в пути, шт"] = (pd.to_numeric(table["Машина"], errors="coerce").fillna(0)
                                   + pd.to_numeric(table["Контейнер"], errors="coerce").fillna(0))
-
-    dead = table["Статус"].isin(["продаж не было", "неликвид, запас больше года"])
-    table["Деньги в неликвиде, руб"] = table["Остаток, руб"].where(dead, 0)
 
     by_brand = (table.groupby("Бренд")
                 .agg(**{"Позиций": ("Наименование", "size"),
                         "Штук на складе": ("Склад, шт", "sum"),
                         "Остаток, руб": ("Остаток, руб", "sum"),
-                        "Продажи, шт/мес": ("Продажи, шт/мес", "sum"),
-                        "Продано за период, руб": ("Продано, руб", "sum"),
-                        "Деньги в неликвиде, руб": ("Деньги в неликвиде, руб", "sum"),
                         "Приход в пути, шт": ("Приход в пути, шт", "sum")})
                 .reset_index())
     by_brand["Доля остатка, %"] = (by_brand["Остаток, руб"] /
                                    by_brand["Остаток, руб"].sum() * 100).round(1)
     by_brand["Доля по штукам, %"] = (by_brand["Штук на складе"] /
                                      by_brand["Штук на складе"].sum() * 100).round(1)
-    by_brand["Запас, месяцев"] = (by_brand["Штук на складе"] / by_brand["Продажи, шт/мес"]
-                                 ).replace([float("inf")], float("nan")).round(1)
-    by_brand["Неликвид, % остатка"] = (by_brand["Деньги в неликвиде, руб"] /
-                                       by_brand["Остаток, руб"] * 100).round(1)
     by_brand = by_brand[["Бренд", "Позиций", "Штук на складе", "Доля по штукам, %",
-                         "Остаток, руб", "Доля остатка, %", "Продажи, шт/мес",
-                         "Запас, месяцев", "Продано за период, руб",
-                         "Деньги в неликвиде, руб", "Неликвид, % остатка",
-                         "Приход в пути, шт"]]
+                         "Остаток, руб", "Доля остатка, %", "Приход в пути, шт"]]
     by_brand = by_brand.sort_values("Остаток, руб", ascending=False)
 
     columns = ["Бренд", "Наименование", "Артикул WB", "Склад, шт", "Себестоимость, руб",
-               "Остаток, руб", "Продано, шт", "Продажи, шт/мес", "Продано, руб",
-               "Запас, месяцев", "Статус", "Приход в пути, шт", "Резерв ВБ, шт",
+               "Остаток, руб", "Приход в пути, шт", "Резерв ВБ, шт",
                "Резерв Озон, шт", "Егор уже брал, шт", "Срок годности"]
     items = table[columns].sort_values("Остаток, руб", ascending=False)
-    dead_items = items[items["Статус"].isin(["продаж не было", "неликвид, запас больше года"])]
-    hot_items = items[items["Статус"] == "ходовой, запас кончается"].sort_values("Продажи, шт/мес",
-                                                                                 ascending=False)
 
     total = pd.DataFrame([
         {"Показатель": "Позиций на складе", "Значение": len(items)},
         {"Показатель": "Штук", "Значение": int(items["Склад, шт"].sum())},
         {"Показатель": "Остаток по себестоимости, руб", "Значение": round(items["Остаток, руб"].sum())},
-        {"Показатель": "Продажи WB, шт/мес", "Значение": round(items["Продажи, шт/мес"].sum())},
-        {"Показатель": "Запас всего склада, месяцев",
-         "Значение": round(items["Склад, шт"].sum() / items["Продажи, шт/мес"].sum(), 1)},
-        {"Показатель": "Неликвид и позиции без продаж, шт позиций", "Значение": len(dead_items)},
-        {"Показатель": "Позиций без данных о продажах",
-         "Значение": int((items["Статус"] == "нет данных о продажах").sum())},
+        {"Показатель": "Брендов", "Значение": int(items["Бренд"].nunique())},
         {"Показатель": "Позиций без себестоимости",
-         "Значение": int((items["Статус"] == "нет себестоимости").sum())},
-        {"Показатель": "Денег в неликвиде, руб", "Значение": round(dead_items["Остаток, руб"].sum())},
-        {"Показатель": "Ходовых позиций с запасом меньше 2 месяцев", "Значение": len(hot_items)},
-        {"Показатель": "Период отчета продаж, дней", "Значение": SALES_DAYS},
+         "Значение": int(items["Себестоимость, руб"].isna().sum())},
+        {"Показатель": "Приход в пути, шт", "Значение": int(items["Приход в пути, шт"].sum())},
     ])
 
     money_total = float(items["Остаток, руб"].sum())
@@ -247,8 +189,6 @@ def main():
             brand_sheet(rows, money_total, units_total).to_excel(
                 writer, sheet_name=sheet_name(brand, used), index=False)
         items.to_excel(writer, sheet_name="ПО ПОЗИЦИЯМ", index=False)
-        dead_items.to_excel(writer, sheet_name="НЕ ХОДОВОЙ", index=False)
-        hot_items.to_excel(writer, sheet_name="ХОДОВОЙ", index=False)
 
         book = writer.book
         for name in book.sheetnames:
@@ -262,7 +202,7 @@ def main():
                 cell.alignment = Alignment(wrap_text=True, vertical="center")
                 sheet.column_dimensions[get_column_letter(index)].width = (
                     58 if title in ("Наименование", "Показатель") else
-                    26 if title in ("Статус", "Бренд") else 13)
+                    26 if title == "Бренд" else 13)
                 if "%" in title:
                     for row in sheet.iter_rows(min_row=2, min_col=index, max_col=index):
                         row[0].number_format = "0.0"
@@ -274,21 +214,13 @@ def main():
             if isinstance(last, str) and last.startswith("ИТОГО"):
                 for cell in sheet[sheet.max_row]:
                     cell.font = Font(bold=True)
-            if "Статус" in titles:
-                column = titles.index("Статус")
-                for row in sheet.iter_rows(min_row=2):
-                    value = row[column].value
-                    if value in ("продаж не было", "неликвид, запас больше года"):
-                        row[column].fill = DEAD_FILL
-                    elif value == "ходовой, запас кончается":
-                        row[column].fill = HOT_FILL
-            if "Запас, месяцев" in titles:
-                letter = get_column_letter(titles.index("Запас, месяцев") + 1)
+            if "Доля остатка, %" in titles:
+                letter = get_column_letter(titles.index("Доля остатка, %") + 1)
                 sheet.conditional_formatting.add(
                     f"{letter}2:{letter}{sheet.max_row}",
-                    ColorScaleRule(start_type="num", start_value=0, start_color="63BE7B",
-                                   mid_type="num", mid_value=6, mid_color="FFEB84",
-                                   end_type="num", end_value=24, end_color="F8696B"))
+                    ColorScaleRule(start_type="num", start_value=0, start_color="FFFFFF",
+                                   mid_type="num", mid_value=10, mid_color="FFEB84",
+                                   end_type="num", end_value=30, end_color="F8696B"))
 
     print(total.to_string(index=False))
     print("\nПо брендам:")
