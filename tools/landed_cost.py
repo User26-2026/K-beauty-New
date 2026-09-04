@@ -100,6 +100,25 @@ def read_manifest(path, book):
     return rows.rename(columns={"Количество": "Количество", "Товар": "Товар"})
 
 
+def spread_cost(table, cost, rate):
+    """Раскидываем фиксированную сумму расходов на позиции двумя способами.
+
+    По стоимости — так считает бухгалтерия и так получается процент к цене.
+    По весу — так расходы возникают на самом деле: машина везет килограммы,
+    а не воны. По дешевому тяжелому товару эти две базы расходятся сильно.
+    """
+    table = table.copy()
+    value = table["Сумма, KRW"] * rate
+    weight = pd.to_numeric(table.get("Вес брутто, кг"), errors="coerce")
+
+    table["Расходы по стоимости, руб"] = (cost * value / value.sum()).round(0)
+    if weight is not None and weight.notna().all() and weight.sum():
+        table["Расходы по весу, руб"] = (cost * weight / weight.sum()).round(0)
+    else:
+        table["Расходы по весу, руб"] = None
+    return table
+
+
 def add_landed(table, markup, rate):
     """Цена с растаможкой и доставкой — та, по которой считаем юнитку."""
     factor = 1 + markup / 100
@@ -133,7 +152,7 @@ def format_sheet(sheet):
                 row[source].fill = ALERT_FILL
 
 
-def main(markup, rate):
+def main(markup, rate, truck_cost):
     invoice, service = read_invoice(INVOICE)
     truck = read_manifest(MANIFEST, price_book(invoice))
 
@@ -141,7 +160,13 @@ def main(markup, rate):
     gap = container["Количество"] - container["Загружено, шт"]
     container["Расхождение заказ/погрузка"] = gap.map(
         lambda value: f"недогруз {value} шт" if value else "")
-    truck = add_landed(truck, markup, rate)
+    # По машине расходы известны одной суммой на всю поставку, а не
+    # процентом: считаем процент сами, чтобы сравнить с контейнером.
+    truck_value = float(truck["Сумма, KRW"].sum()) * rate
+    truck_markup = truck_cost / truck_value * 100 if truck_cost else markup
+    if truck_cost:
+        truck = spread_cost(truck, truck_cost, rate)
+    truck = add_landed(truck, truck_markup, rate)
 
     by_brand = (container.groupby("Бренд")
                 .agg(**{"Позиций": ("Товар", "size"), "Штук": ("Загружено, шт", "sum"),
@@ -167,11 +192,18 @@ def main(markup, rate):
         {"Показатель": "МАШИНА: позиций", "Значение": len(truck)},
         {"Показатель": "МАШИНА: штук", "Значение": int(truck["Количество"].sum())},
         {"Показатель": "МАШИНА: инвойс, KRW", "Значение": round(truck_sum)},
-        {"Показатель": "МАШИНА: с наценкой, KRW", "Значение": round(truck_sum * (1 + markup / 100))},
-        {"Показатель": "МАШИНА: с наценкой, руб",
-         "Значение": round(truck_sum * (1 + markup / 100) * rate)},
+        {"Показатель": "МАШИНА: товар без расходов, руб", "Значение": round(truck_sum * rate)},
+        {"Показатель": "МАШИНА: расходы до Москвы, руб", "Значение": round(truck_cost)},
+        {"Показатель": "МАШИНА: это процент к цене товара",
+         "Значение": round(truck_markup, 1)},
+        {"Показатель": "МАШИНА: расходы на штуку, руб",
+         "Значение": round(truck_cost / float(truck["Количество"].sum()), 2)},
+        {"Показатель": "МАШИНА: с расходами, KRW",
+         "Значение": round(truck_sum * (1 + truck_markup / 100))},
+        {"Показатель": "МАШИНА: с расходами, руб",
+         "Значение": round(truck_sum * rate + truck_cost)},
         {"Показатель": "ВСЕГО в пути, руб",
-         "Значение": round((goods + truck_sum) * (1 + markup / 100) * rate)},
+         "Значение": round(goods * (1 + markup / 100) * rate + truck_sum * rate + truck_cost)},
         {"Показатель": "Недогружено против заказа, шт",
          "Значение": int((container["Количество"] - container["Загружено, шт"]).sum())},
         {"Показатель": "Инвойс выставлен на недогруз, KRW",
@@ -185,9 +217,11 @@ def main(markup, rate):
                "Цена до Москвы, KRW", "Себестоимость, руб/шт",
                "Сумма, KRW", "Сумма по погрузке, KRW", "Сумма до Москвы, KRW",
                "Сумма, руб", "Расхождение заказ/погрузка"]
-    truck_columns = ["Товар", "Штрихкод", "Количество", "Срок годности", "Источник цены",
+    truck_columns = ["Товар", "Штрихкод", "Количество", "Вес брутто, кг", "Срок годности",
+                     "Источник цены",
                      "Цена, KRW", "Цена до Москвы, KRW", "Себестоимость, руб/шт",
-                     "Сумма, KRW", "Сумма до Москвы, KRW", "Сумма, руб"]
+                     "Сумма, KRW", "Расходы по стоимости, руб", "Расходы по весу, руб",
+                     "Сумма до Москвы, KRW", "Сумма, руб"]
 
     with pd.ExcelWriter(OUT) as writer:
         pd.DataFrame(total).to_excel(writer, sheet_name="ИТОГО", index=False)
@@ -212,5 +246,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Себестоимость товара в пути")
     parser.add_argument("--markup", type=float, default=30.0)
     parser.add_argument("--rate", type=float, default=KRW_RUB)
+    parser.add_argument("--truck-cost", type=float, default=1_000_000,
+                        help="расходы по машине одной суммой, руб")
     args = parser.parse_args()
-    main(args.markup, args.rate)
+    main(args.markup, args.rate, args.truck_cost)
