@@ -86,6 +86,44 @@ def read_stock(path):
     return pd.DataFrame(rows)
 
 
+BAD_CHARS = re.compile(r"[\\/*?:\[\]]")
+
+
+def sheet_name(brand, used):
+    """Имя вкладки: Excel не берет длиннее 31 символа и часть знаков."""
+    name = BAD_CHARS.sub(" ", str(brand)).strip()[:31] or "БЕЗ БРЕНДА"
+    if name in used:
+        name = f"{name[:28]}_{len(used)}"
+    used.add(name)
+    return name
+
+
+def brand_sheet(rows, money_total, units_total):
+    """Лист одного бренда: его товары, деньги и доля в общем складе."""
+    columns = ["Наименование", "Артикул WB", "Склад, шт", "Себестоимость, руб",
+               "Остаток, руб", "Доля в бренде, %", "Доля в складе, %",
+               "Продажи, шт/мес", "Запас, месяцев", "Статус", "Приход в пути, шт"]
+    table = rows.copy()
+    brand_money = table["Остаток, руб"].sum()
+    table["Доля в бренде, %"] = (table["Остаток, руб"] / brand_money * 100).round(1) \
+        if brand_money else 0.0
+    table["Доля в складе, %"] = (table["Остаток, руб"] / money_total * 100).round(1)
+    table = table[columns].sort_values("Остаток, руб", ascending=False)
+
+    total = {column: None for column in columns}
+    total.update({
+        "Наименование": "ИТОГО ПО БРЕНДУ",
+        "Склад, шт": table["Склад, шт"].sum(),
+        "Остаток, руб": brand_money,
+        "Доля в бренде, %": 100.0,
+        "Доля в складе, %": round(brand_money / money_total * 100, 1),
+        "Продажи, шт/мес": round(table["Продажи, шт/мес"].sum(), 1),
+        "Приход в пути, шт": table["Приход в пути, шт"].sum(),
+        "Статус": f"{table['Склад, шт'].sum() / units_total * 100:.1f}% всех штук склада",
+    })
+    return pd.concat([table, pd.DataFrame([total])], ignore_index=True)
+
+
 def status(cover, sold, in_report):
     """Ходовой товар мерим запасом в месяцах, а не выручкой.
 
@@ -157,10 +195,17 @@ def main():
                 .reset_index())
     by_brand["Доля остатка, %"] = (by_brand["Остаток, руб"] /
                                    by_brand["Остаток, руб"].sum() * 100).round(1)
+    by_brand["Доля по штукам, %"] = (by_brand["Штук на складе"] /
+                                     by_brand["Штук на складе"].sum() * 100).round(1)
     by_brand["Запас, месяцев"] = (by_brand["Штук на складе"] / by_brand["Продажи, шт/мес"]
                                  ).replace([float("inf")], float("nan")).round(1)
     by_brand["Неликвид, % остатка"] = (by_brand["Деньги в неликвиде, руб"] /
                                        by_brand["Остаток, руб"] * 100).round(1)
+    by_brand = by_brand[["Бренд", "Позиций", "Штук на складе", "Доля по штукам, %",
+                         "Остаток, руб", "Доля остатка, %", "Продажи, шт/мес",
+                         "Запас, месяцев", "Продано за период, руб",
+                         "Деньги в неликвиде, руб", "Неликвид, % остатка",
+                         "Приход в пути, шт"]]
     by_brand = by_brand.sort_values("Остаток, руб", ascending=False)
 
     columns = ["Бренд", "Наименование", "Артикул WB", "Склад, шт", "Себестоимость, руб",
@@ -189,9 +234,18 @@ def main():
         {"Показатель": "Период отчета продаж, дней", "Значение": SALES_DAYS},
     ])
 
+    money_total = float(items["Остаток, руб"].sum())
+    units_total = float(items["Склад, шт"].sum())
+
     with pd.ExcelWriter(OUT) as writer:
         total.to_excel(writer, sheet_name="ИТОГО", index=False)
         by_brand.to_excel(writer, sheet_name="ПО БРЕНДАМ", index=False)
+        # Дальше вкладка на каждый бренд, по убыванию денег в остатке.
+        used = {"ИТОГО", "ПО БРЕНДАМ"}
+        for brand in by_brand["Бренд"]:
+            rows = items[items["Бренд"] == brand]
+            brand_sheet(rows, money_total, units_total).to_excel(
+                writer, sheet_name=sheet_name(brand, used), index=False)
         items.to_excel(writer, sheet_name="ПО ПОЗИЦИЯМ", index=False)
         dead_items.to_excel(writer, sheet_name="НЕ ХОДОВОЙ", index=False)
         hot_items.to_excel(writer, sheet_name="ХОДОВОЙ", index=False)
@@ -209,9 +263,17 @@ def main():
                 sheet.column_dimensions[get_column_letter(index)].width = (
                     58 if title in ("Наименование", "Показатель") else
                     26 if title in ("Статус", "Бренд") else 13)
+                if "%" in title:
+                    for row in sheet.iter_rows(min_row=2, min_col=index, max_col=index):
+                        row[0].number_format = "0.0"
                 if "руб" in title or "шт" in title:
                     for row in sheet.iter_rows(min_row=2, min_col=index, max_col=index):
                         row[0].number_format = "# ##0"
+            # Строку ИТОГО в листе бренда выделяем жирным.
+            last = sheet.cell(row=sheet.max_row, column=1).value
+            if isinstance(last, str) and last.startswith("ИТОГО"):
+                for cell in sheet[sheet.max_row]:
+                    cell.font = Font(bold=True)
             if "Статус" in titles:
                 column = titles.index("Статус")
                 for row in sheet.iter_rows(min_row=2):
