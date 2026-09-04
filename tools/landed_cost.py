@@ -91,11 +91,19 @@ def price_book(invoice):
 
 
 def read_manifest(path, book):
+    """Цена из самого списка главнее: ее назвал поставщик по этой поставке.
+
+    Тонер CELIMAX в машине стоит 10 300 вон, а в контейнере 8 930 — это
+    разные отгрузки, и подставлять цену контейнера сюда нельзя.
+    """
     rows = pd.read_csv(path, sep=";", dtype={"Штрихкод": str})
     rows["Штрихкод"] = rows["Штрихкод"].map(clean_barcode)
+    known = pd.to_numeric(rows.get("Цена, KRW"), errors="coerce")
     found = rows["Штрихкод"].map(lambda code: book.get(code, (None, "цены нет")))
-    rows["Цена, KRW"] = [item[0] for item in found]
-    rows["Источник цены"] = [item[1] for item in found]
+    rows["Цена, KRW"] = [price if pd.notna(price) else item[0]
+                         for price, item in zip(known, found)]
+    rows["Источник цены"] = ["названа по этой поставке" if pd.notna(price) else item[1]
+                             for price, item in zip(known, found)]
     rows["Сумма, KRW"] = rows["Цена, KRW"] * rows["Количество"]
     return rows.rename(columns={"Количество": "Количество", "Товар": "Товар"})
 
