@@ -123,6 +123,35 @@ def main(country):
                            "Переплата, руб": ("Переплата на партии, руб", "sum")})
                    .reset_index().sort_values("Переплата, руб", ascending=False))
 
+    # Свод по брендам: где деньги, а где просто проценты.
+    by_brand = (found.groupby("Бренд")
+                .agg(**{"Позиций": ("Товар", "size"),
+                        "Куплено, шт": ("Куплено, шт", "sum"),
+                        "Сумма закупки, руб": ("Сумма закупки, KRW",
+                                               lambda values: round(values.sum() * KRW_RUB)),
+                        "Переплата, руб": ("Переплата на партии, руб",
+                                           lambda values: int(values[values > 0].sum())),
+                        "Экономия, руб": ("Переплата на партии, руб",
+                                          lambda values: int(-values[values < 0].sum()))})
+                .reset_index())
+    by_brand["Переплата к закупке, %"] = (by_brand["Переплата, руб"] /
+                                          by_brand["Сумма закупки, руб"] * 100).round(1)
+    by_brand = by_brand.sort_values("Переплата, руб", ascending=False)
+
+    # Весь инвойс одной таблицей, снизу строка ИТОГО.
+    whole = found.sort_values("Переплата на партии, руб", ascending=False).copy()
+    whole["Сумма закупки, руб"] = (whole["Сумма закупки, KRW"] * KRW_RUB).round(0)
+    footer = {column: None for column in whole.columns}
+    footer.update({
+        "Бренд": "ИТОГО",
+        "Куплено, шт": whole["Куплено, шт"].sum(),
+        "Сумма закупки, KRW": whole["Сумма закупки, KRW"].sum(),
+        "Сумма закупки, руб": whole["Сумма закупки, руб"].sum(),
+        "Переплата на партии, руб": whole["Переплата на партии, руб"].sum(),
+        "Дешевле всех": f"переплата {int(overpaid['Переплата на партии, руб'].sum())} руб",
+    })
+    whole = pd.concat([whole, pd.DataFrame([footer])], ignore_index=True)
+
     total = pd.DataFrame([
         {"Показатель": "Позиций в инвойсе", "Значение": len(table)},
         {"Показатель": "Нашлось в прайсах поставщиков", "Значение": len(found)},
@@ -142,6 +171,8 @@ def main(country):
 
     with pd.ExcelWriter(OUT) as writer:
         total.to_excel(writer, sheet_name="ИТОГО", index=False)
+        whole.to_excel(writer, sheet_name="ВЕСЬ ИНВОЙС", index=False)
+        by_brand.to_excel(writer, sheet_name="ПО БРЕНДАМ", index=False)
         by_supplier.to_excel(writer, sheet_name="У КОГО ДЕШЕВЛЕ", index=False)
         overpaid.to_excel(writer, sheet_name="ПЕРЕПЛАТИЛИ", index=False)
         cheaper.to_excel(writer, sheet_name="КУПИЛИ ХОРОШО", index=False)
@@ -165,6 +196,18 @@ def main(country):
                 if "%" in title:
                     for row in sheet.iter_rows(min_row=2, min_col=index, max_col=index):
                         row[0].number_format = "0.0"
+            last = sheet.cell(row=sheet.max_row, column=1).value
+            if isinstance(last, str) and last.startswith("ИТОГО"):
+                for cell in sheet[sheet.max_row]:
+                    cell.font = Font(bold=True)
+            if "Переплата на партии, руб" in titles:
+                column = titles.index("Переплата на партии, руб")
+                for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row - 1):
+                    value = row[column].value
+                    if isinstance(value, (int, float)) and value > 0:
+                        row[column].fill = ALERT_FILL
+                    elif isinstance(value, (int, float)) and value < 0:
+                        row[column].fill = GOOD_FILL
             if "Мы дороже на, %" in titles and sheet.max_row > 1:
                 letter = get_column_letter(titles.index("Мы дороже на, %") + 1)
                 sheet.conditional_formatting.add(
