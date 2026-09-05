@@ -116,7 +116,6 @@ def main(country):
     # Переплата — только там, где чужая цена ниже нашей.
     overpaid = found[found["Переплата на партии, KRW"] > 0].sort_values(
         "Переплата на партии, руб", ascending=False)
-    cheaper = found[found["Переплата на партии, KRW"] <= 0].sort_values("Мы дороже на, %")
 
     by_supplier = (overpaid.groupby("Дешевле всех")
                    .agg(**{"Позиций": ("Товар", "size"),
@@ -130,9 +129,7 @@ def main(country):
                         "Сумма закупки, руб": ("Сумма закупки, KRW",
                                                lambda values: round(values.sum() * KRW_RUB)),
                         "Переплата, руб": ("Переплата на партии, руб",
-                                           lambda values: int(values[values > 0].sum())),
-                        "Экономия, руб": ("Переплата на партии, руб",
-                                          lambda values: int(-values[values < 0].sum()))})
+                                           lambda values: int(values[values > 0].sum()))})
                 .reset_index())
     by_brand["Переплата к закупке, %"] = (by_brand["Переплата, руб"] /
                                           by_brand["Сумма закупки, руб"] * 100).round(1)
@@ -141,13 +138,16 @@ def main(country):
     # Весь инвойс одной таблицей, снизу строка ИТОГО.
     whole = found.sort_values("Переплата на партии, руб", ascending=False).copy()
     whole["Сумма закупки, руб"] = (whole["Сумма закупки, KRW"] * KRW_RUB).round(0)
+    # Там, где дешевле нашей цены никто не дает, переплаты нет — не пишем
+    # в этой колонке отрицательные числа, они читаются как скидка.
+    whole.loc[whole["Переплата на партии, руб"] <= 0, "Переплата на партии, руб"] = 0
     footer = {column: None for column in whole.columns}
     footer.update({
         "Бренд": "ИТОГО",
         "Куплено, шт": whole["Куплено, шт"].sum(),
         "Сумма закупки, KRW": whole["Сумма закупки, KRW"].sum(),
         "Сумма закупки, руб": whole["Сумма закупки, руб"].sum(),
-        "Переплата на партии, руб": whole["Переплата на партии, руб"].sum(),
+        "Переплата на партии, руб": int(overpaid["Переплата на партии, руб"].sum()),
         "Дешевле всех": f"переплата {int(overpaid['Переплата на партии, руб'].sum())} руб",
     })
     whole = pd.concat([whole, pd.DataFrame([footer])], ignore_index=True)
@@ -157,7 +157,8 @@ def main(country):
         {"Показатель": "Нашлось в прайсах поставщиков", "Значение": len(found)},
         {"Показатель": "Не с чем сравнить", "Значение": len(missing)},
         {"Показатель": "Позиций, где мы купили дороже", "Значение": len(overpaid)},
-        {"Показатель": "Позиций, где наша цена лучшая", "Значение": len(cheaper)},
+        {"Показатель": "Позиций, где дешевле нашей цены нет",
+         "Значение": len(found) - len(overpaid)},
         {"Показатель": "Переплата всего, KRW",
          "Значение": int(overpaid["Переплата на партии, KRW"].sum())},
         {"Показатель": "Переплата всего, руб",
@@ -175,7 +176,6 @@ def main(country):
         by_brand.to_excel(writer, sheet_name="ПО БРЕНДАМ", index=False)
         by_supplier.to_excel(writer, sheet_name="У КОГО ДЕШЕВЛЕ", index=False)
         overpaid.to_excel(writer, sheet_name="ПЕРЕПЛАТИЛИ", index=False)
-        cheaper.to_excel(writer, sheet_name="КУПИЛИ ХОРОШО", index=False)
         missing.to_excel(writer, sheet_name="НЕ С ЧЕМ СРАВНИТЬ", index=False)
 
         for name in writer.book.sheetnames:
