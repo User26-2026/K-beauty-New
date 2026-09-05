@@ -31,6 +31,8 @@ COUNTRY = "KR"
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 ALERT_FILL = PatternFill("solid", fgColor="FFC7CE")
 GOOD_FILL = PatternFill("solid", fgColor="C6EFCE")
+MONEY_FILL = PatternFill("solid", fgColor="FF0000")
+BIG_FONT = Font(bold=True, size=14, color="FFFFFF")
 
 
 def supplier_prices(country):
@@ -172,6 +174,8 @@ def main(country):
     absent = with_total(missing.copy(), "Бренд", ["Куплено, шт"])
 
     total = pd.DataFrame([
+        {"Показатель": "ПЕРЕПЛАТА ВСЕГО, РУБ",
+         "Значение": int(overpaid["Переплата на партии, руб"].sum())},
         {"Показатель": "Позиций в инвойсе", "Значение": len(table)},
         {"Показатель": "Нашлось в прайсах поставщиков", "Значение": len(found)},
         {"Показатель": "Не с чем сравнить", "Значение": len(missing)},
@@ -180,8 +184,6 @@ def main(country):
          "Значение": len(found) - len(overpaid)},
         {"Показатель": "Переплата всего, KRW",
          "Значение": int(overpaid["Переплата на партии, KRW"].sum())},
-        {"Показатель": "Переплата всего, руб",
-         "Значение": int(overpaid["Переплата на партии, руб"].sum())},
         {"Показатель": "Сумма закупки по сравнимым позициям, KRW",
          "Значение": int(found["Сумма закупки, KRW"].sum())},
         {"Показатель": "Переплата к сравнимой закупке, %",
@@ -220,6 +222,14 @@ def main(country):
                 for cell in sheet[sheet.max_row]:
                     cell.font = Font(bold=True)
                     cell.fill = HEADER_FILL
+            # Главная цифра отчета — сумма переплаты. Ставим ее первой
+            # строкой на листе ИТОГО и красим, чтобы не искать глазами.
+            if name == "ИТОГО":
+                for cell in sheet[2]:
+                    cell.font = BIG_FONT
+                    cell.fill = MONEY_FILL
+                sheet.cell(row=2, column=2).number_format = "# ##0 \u20bd"
+                sheet.row_dimensions[2].height = 24
             if "Переплата на партии, руб" in titles:
                 column = titles.index("Переплата на партии, руб")
                 for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row - 1):
