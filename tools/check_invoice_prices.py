@@ -64,6 +64,16 @@ def same_goods(our_name, their_name):
     return len(common) >= 2
 
 
+def with_total(table, label_column, sums, label="ИТОГО"):
+    """Дописывает строку ИТОГО: без нее таблицу приходится считать руками."""
+    footer = {column: None for column in table.columns}
+    footer[label_column] = label
+    for column in sums:
+        if column in table.columns:
+            footer[column] = table[column].sum()
+    return pd.concat([table, pd.DataFrame([footer])], ignore_index=True)
+
+
 def main(country):
     invoice, _ = read_invoice(INVOICE)
     invoice = invoice[invoice["Штрихкод"].notna()].copy()
@@ -121,6 +131,7 @@ def main(country):
                    .agg(**{"Позиций": ("Товар", "size"),
                            "Переплата, руб": ("Переплата на партии, руб", "sum")})
                    .reset_index().sort_values("Переплата, руб", ascending=False))
+    by_supplier = with_total(by_supplier, "Дешевле всех", ["Позиций", "Переплата, руб"])
 
     # Свод по брендам: где деньги, а где просто проценты.
     by_brand = (found.groupby("Бренд")
@@ -134,6 +145,10 @@ def main(country):
     by_brand["Переплата к закупке, %"] = (by_brand["Переплата, руб"] /
                                           by_brand["Сумма закупки, руб"] * 100).round(1)
     by_brand = by_brand.sort_values("Переплата, руб", ascending=False)
+    by_brand = with_total(by_brand, "Бренд",
+                          ["Позиций", "Куплено, шт", "Сумма закупки, руб", "Переплата, руб"])
+    by_brand.iloc[-1, by_brand.columns.get_loc("Переплата к закупке, %")] = round(
+        by_brand["Переплата, руб"].iloc[-1] / by_brand["Сумма закупки, руб"].iloc[-1] * 100, 1)
 
     # Весь инвойс одной таблицей, снизу строка ИТОГО.
     whole = found.sort_values("Переплата на партии, руб", ascending=False).copy()
@@ -151,6 +166,10 @@ def main(country):
         "Дешевле всех": f"переплата {int(overpaid['Переплата на партии, руб'].sum())} руб",
     })
     whole = pd.concat([whole, pd.DataFrame([footer])], ignore_index=True)
+
+    paid = with_total(overpaid.copy(), "Бренд",
+                      ["Куплено, шт", "Переплата на партии, KRW", "Переплата на партии, руб"])
+    absent = with_total(missing.copy(), "Бренд", ["Куплено, шт"])
 
     total = pd.DataFrame([
         {"Показатель": "Позиций в инвойсе", "Значение": len(table)},
@@ -175,8 +194,8 @@ def main(country):
         whole.to_excel(writer, sheet_name="ВЕСЬ ИНВОЙС", index=False)
         by_brand.to_excel(writer, sheet_name="ПО БРЕНДАМ", index=False)
         by_supplier.to_excel(writer, sheet_name="У КОГО ДЕШЕВЛЕ", index=False)
-        overpaid.to_excel(writer, sheet_name="ПЕРЕПЛАТИЛИ", index=False)
-        missing.to_excel(writer, sheet_name="НЕ С ЧЕМ СРАВНИТЬ", index=False)
+        paid.to_excel(writer, sheet_name="ПЕРЕПЛАТИЛИ", index=False)
+        absent.to_excel(writer, sheet_name="НЕ С ЧЕМ СРАВНИТЬ", index=False)
 
         for name in writer.book.sheetnames:
             sheet = writer.book[name]
@@ -200,6 +219,7 @@ def main(country):
             if isinstance(last, str) and last.startswith("ИТОГО"):
                 for cell in sheet[sheet.max_row]:
                     cell.font = Font(bold=True)
+                    cell.fill = HEADER_FILL
             if "Переплата на партии, руб" in titles:
                 column = titles.index("Переплата на партии, руб")
                 for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row - 1):
