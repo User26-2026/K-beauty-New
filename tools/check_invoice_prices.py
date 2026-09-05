@@ -76,10 +76,14 @@ def with_total(table, label_column, sums, label="ИТОГО"):
     return pd.concat([table, pd.DataFrame([footer])], ignore_index=True)
 
 
-def main(country):
+def main(country, bought_from):
     invoice, _ = read_invoice(INVOICE)
     invoice = invoice[invoice["Штрихкод"].notna()].copy()
     market = supplier_prices(country)
+    # Поставщик, у которого мы купили, в альтернативы не годится: его
+    # прайс другой даты, и разница с ним — это рост цены, а не выбор.
+    if bought_from:
+        market = market[market["Поставщик"] != bought_from]
     suppliers = sorted(market["Поставщик"].unique())
 
     prices = market.pivot(index="Штрихкод", columns="Поставщик", values="Закупка, KRW")
@@ -110,6 +114,8 @@ def main(country):
         if offers:
             best = min(offers, key=offers.get)
             record["Дешевле всех"] = best
+            record["Прайс"] = market.loc[
+                (market["Штрихкод"] == code) & (market["Поставщик"] == best), "Файл"].iloc[0]
             record["Лучшая цена, KRW"] = offers[best]
             record["Разница на штуке, KRW"] = round(item["Цена, KRW"] - offers[best])
             record["Мы дороже на, %"] = round(
@@ -177,6 +183,7 @@ def main(country):
         {"Показатель": "ПЕРЕПЛАТА ВСЕГО, РУБ",
          "Значение": int(overpaid["Переплата на партии, руб"].sum())},
         {"Показатель": "Позиций в инвойсе", "Значение": len(table)},
+        {"Показатель": "Купили у", "Значение": bought_from or "не указано"},
         {"Показатель": "Нашлось в прайсах поставщиков", "Значение": len(found)},
         {"Показатель": "Не с чем сравнить", "Значение": len(missing)},
         {"Показатель": "Позиций, где мы купили дороже", "Значение": len(overpaid)},
@@ -255,4 +262,7 @@ def main(country):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Сверка инвойса с прайсами")
     parser.add_argument("--country", default=COUNTRY)
-    main(parser.parse_args().country)
+    parser.add_argument("--bought-from", default="Papa Cosmetic",
+                        help="у кого купили: его прайс в альтернативы не берем")
+    args = parser.parse_args()
+    main(args.country, args.bought_from)
