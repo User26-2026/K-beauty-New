@@ -25,7 +25,7 @@ from rates import KRW_RUB
 from supplier_brand_matrix import split_conflicts, tokens
 
 PRICES = "outputs/prices_normalized.xlsx"
-OUT = "outputs/invoice_price_check.xlsx"
+OUT = "outputs/Сравнение цен купленного товара в Корее.xlsx"
 COUNTRY = "KR"
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
