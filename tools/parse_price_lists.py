@@ -135,6 +135,9 @@ EXCLUDE_PATTERNS = {
 
 # Явные языковые подписи — их разбираем до общих шаблонов названия.
 STRONG_PATTERNS = {
+    # B2B-прайс SAFIYA держит бренд и штрихкод в одной колонке: бренд стоит
+    # заголовком секции, а строки товаров начинаются с цифр штрихкода.
+    "brand_code": [r"^бренд\s*[/|]\s*(gtin|штрихкод|ean|barcode)"],
     "name_kr": [
         r"\bname\b.*\b(ko|kr|kor|korean)\b", r"^korean$",
         r"국문", r"한글명", r"제품명", r"품명",
@@ -406,7 +409,10 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, curre
                 name_kr = korean
             break
 
-        brand = clean_text(cell("brand")) or last_brand
+        # Колонка "Бренд / GTIN": цифры это штрихкод, текст — заголовок бренда.
+        joint = clean_text(cell("brand_code"))
+        joint_code = joint if joint and joint.isdigit() else None
+        brand = clean_text(cell("brand")) or (None if joint_code else joint) or last_brand
         last_brand = brand  # в прайсах бренд ставят только в первой строке блока
         brand = normalize_brand(brand)
 
@@ -419,7 +425,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, curre
             "Лист": sheet_name,
             "Бренд": brand,
             "Артикул": clean_text(cell("code")),
-            "Штрихкод": clean_barcode(cell("barcode")),
+            "Штрихкод": clean_barcode(cell("barcode")) or clean_barcode(joint_code),
             "Название EN": name_en,
             "Название KR": name_kr,
             "Название RU": clean_text(cell("name_ru")),
