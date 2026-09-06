@@ -16,6 +16,8 @@ GIVE = 3000
 OVERRIDES = {
     "FARMSTAY - Black Garlic Nourishing Shampoo": 1000,
     "FARMSTAY - Collagen Water Full Shampoo": 1000,
+    # Сыворотку придерживаем: нужен запас, чтобы торговать самим.
+    "CELIMAX THE VITA-A RETINOL SHOT TIGHTENING SERUM": 1000,
 }
 # Позиции, которых на складе меньше порога, но в заказ их берем отдельно.
 ADDITIONS = {
