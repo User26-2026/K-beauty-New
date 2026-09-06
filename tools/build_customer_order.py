@@ -14,6 +14,8 @@ MIN_STOCK = 3000
 GIVE = 3000
 # Отдельные позиции даем меньше стандартных 3000: по ним свои причины.
 OVERRIDES = {"FARMSTAY - Black Garlic Nourishing Shampoo": 1000}
+# Позиции, которых на складе меньше порога, но в заказ их берем отдельно.
+ADDITIONS = {"FARMSTAY - Argan Oil Complete Volume Up Shampoo": 2000}
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 TOTAL_FILL = PatternFill("solid", fgColor="FFF2CC")
@@ -43,15 +45,24 @@ plan = plan[plan["Наименование"].notna()].reset_index(drop=True)
 plan["Приход, шт"] = (pd.to_numeric(plan["Машина"], errors="coerce").fillna(0)
                       + pd.to_numeric(plan["Контейнер"], errors="coerce").fillna(0))
 
-order = stock[stock["Остаток, шт"] >= MIN_STOCK].copy()
+def added(name):
+    for key in ADDITIONS:
+        if key.lower() in str(name).lower():
+            return True
+    return False
+
+
+picked = (stock["Остаток, шт"] >= MIN_STOCK) | stock["Товар"].map(added)
+order = stock[picked].copy()
 pairs = name_match.match(order["Товар"], plan["Наименование"])
 order["Приход, шт"] = [plan.loc[pairs[index], "Приход, шт"] if index in pairs else 0
                        for index in order.index]
 
 def give(name):
-    for key, quantity in OVERRIDES.items():
-        if key.lower() in str(name).lower():
-            return quantity
+    for source in (OVERRIDES, ADDITIONS):
+        for key, quantity in source.items():
+            if key.lower() in str(name).lower():
+                return quantity
     return GIVE
 
 
