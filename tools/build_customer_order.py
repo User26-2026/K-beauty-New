@@ -13,9 +13,18 @@ OUT = "outputs/Заказ покупателю.xlsx"
 MIN_STOCK = 3000
 GIVE = 3000
 # Отдельные позиции даем меньше стандартных 3000: по ним свои причины.
-OVERRIDES = {"FARMSTAY - Black Garlic Nourishing Shampoo": 1000}
+OVERRIDES = {
+    "FARMSTAY - Black Garlic Nourishing Shampoo": 1000,
+    "FARMSTAY - Collagen Water Full Shampoo": 1000,
+}
 # Позиции, которых на складе меньше порога, но в заказ их берем отдельно.
-ADDITIONS = {"FARMSTAY - Argan Oil Complete Volume Up Shampoo": 1000}
+ADDITIONS = {
+    "FARMSTAY - Argan Oil Complete Volume Up Shampoo": 1000,
+    # Линейка DEOPROCE уходит целиком, остатки там маленькие.
+    "DEOPROCE SHAMPOO - BLACK GARLIC INTENSME ENERGY [200ml]": 240,
+    "DEOPROCE SHAMPOO - BLACK GARLIC INTENSME ENERGY [1000ml]": 400,
+    "DEOPROCE RINSE - BLACK GARLIC INTENSME ENERGY [1000ml]": 400,
+}
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 TOTAL_FILL = PatternFill("solid", fgColor="FFF2CC")
