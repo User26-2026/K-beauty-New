@@ -26,6 +26,10 @@ import name_match
 
 # Форма заказа: колонки Наименование, Остаток, себестоимость, срок, заказ.
 STOCK = "data/stock_costs/Остатки_31.08.2026_форма_заказа.xlsx"
+# Заявка покупателя с его месячной потребностью: по этим позициям
+# количество известно точно, и спрашивать долю от остатка незачем.
+MONTHLY = "data/pricing/Ежемесячная потребность.xlsx"
+MATCH_SCORE = 0.65
 PRICES = "outputs/prices_normalized.xlsx"
 OUT = "outputs/Заявка в Корею.xlsx"
 
@@ -39,6 +43,55 @@ EXTRA = {"ENOUGH": r"FOUNDATION"}
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 ASK_FILL = PatternFill("solid", fgColor="FFF2CC")
 TOTAL_FILL = PatternFill("solid", fgColor="C6EFCE")
+
+
+TONE = re.compile(r"(?:#|\\#)?\b(\d{2}[A-Z]?|N\d{2})\b(?:\s*тон)?", re.IGNORECASE)
+SKIP_WORDS = {"ТОН", "SPF", "PA", "ML", "ГР", "КРЕМ", "ENOUGH", "NOUGH"}
+
+
+def line_key(name):
+    """Ключ линейки и тон отдельно: «Ultra X10 Cover Up ... 13 тон» и
+    «ENOUGH Ultra X10 Cover up Collagen Foundation #13» — один товар."""
+    text = str(name).upper().replace("\\", "")
+    tone = ""
+    for match in TONE.finditer(text):
+        candidate = match.group(1)
+        if candidate not in {"15", "50", "10", "3X", "X10"}:
+            tone = candidate
+    words = {word.strip("#+,.") for word in re.split(r"[^A-ZА-Я0-9#+]+", text)}
+    words = {word for word in words
+             if word and word not in SKIP_WORDS and not word.isdigit()}
+    return frozenset(words), tone
+
+
+def brand_of(name):
+    brand = re.split(r"[ -]", str(name).strip())[0].upper()
+    return "ENOUGH" if brand == "NOUGH" else brand
+
+
+def match_line(name, prices):
+    """Ищем позицию в корейских прайсах по бренду, словам линейки и тону."""
+    candidates = prices[prices["Марка"] == brand_of(name).replace(" ", "")]
+    words, tone = line_key(name)
+    best, score = None, 0.0
+    for index, row in candidates.iterrows():
+        other, other_tone = line_key(row["Чистое"])
+        if tone != other_tone or not (words | other):
+            continue
+        value = len(words & other) / len(words | other)
+        if value > score:
+            best, score = index, value
+    return best if score >= MATCH_SCORE else None
+
+
+def read_monthly(path):
+    """Список месячной потребности: название, количество, проходная цена."""
+    table = pd.read_excel(path, header=None, names=["Товар", "Нужно, шт",
+                                                   "Проходная цена, руб", "Сумма"])
+    table = table[pd.to_numeric(table["Нужно, шт"], errors="coerce").notna()]
+    table["Нужно, шт"] = table["Нужно, шт"].astype(int)
+    table["Товар"] = table["Товар"].astype(str).str.strip()
+    return table.reset_index(drop=True)
 
 
 def read_stock(path):
@@ -139,6 +192,48 @@ def main(share, cap, step, floor):
     if additions:
         stock = pd.concat([stock, pd.DataFrame(additions)], ignore_index=True)
         print(f"Добавлено позиций, которых нет на складе: {len(additions)}")
+    # Заявка покупателя: там количество названо прямо, и оно главнее доли.
+    monthly = read_monthly(MONTHLY)
+    prices = prices.assign(
+        Чистое=[latin(name, brand) for name, brand
+                in zip(prices["Название EN"], prices["Бренд"])],
+        Марка=prices["Бренд"].fillna("").str.upper().str.replace(" ", ""))
+    wanted = []
+    for _, row in monthly.iterrows():
+        match = match_line(row["Товар"], prices)
+        wanted.append({
+            "Товар": prices.loc[match, "Чистое"] if match is not None else row["Товар"],
+            "Бренд": prices.loc[match, "Бренд"] if match is not None else brand_of(row["Товар"]),
+            "Штрихкод": prices.loc[match, "Штрихкод"] if match is not None else None,
+            "Остаток, шт": 0,
+            "Запрашиваем, шт": int(row["Нужно, шт"]),
+            "Закупка, KRW": prices.loc[match, "Закупка, KRW"] if match is not None else None,
+            "Поставщик": prices.loc[match, "Поставщик"] if match is not None else None,
+        })
+    wanted = pd.DataFrame(wanted)
+    # Две строки заявки могут указывать на один товар: берем большее число.
+    with_code = wanted[wanted["Штрихкод"].notna()]
+    if not with_code.empty:
+        biggest = with_code.groupby("Штрихкод")["Запрашиваем, шт"].transform("max")
+        wanted = pd.concat([wanted[wanted["Штрихкод"].isna()],
+                            with_code.assign(**{"Запрашиваем, шт": biggest})
+                            .drop_duplicates("Штрихкод")], ignore_index=True)
+
+    # Если позиция уже есть в заявке, количество берем из заявки покупателя.
+    by_code = {code: index for index, code in stock["Штрихкод"].items()
+               if isinstance(code, str) and len(code) >= 8}
+    keep = []
+    for index, row in wanted.iterrows():
+        target = by_code.get(row["Штрихкод"])
+        if target is None:
+            keep.append(index)
+            continue
+        stock.loc[target, "Запрашиваем, шт"] = max(stock.loc[target, "Запрашиваем, шт"],
+                                                   row["Запрашиваем, шт"])
+    if keep:
+        stock = pd.concat([stock, wanted.loc[keep]], ignore_index=True)
+        print(f"Из заявки покупателя добавлено позиций: {len(keep)}")
+
     stock["Название для заявки"] = [latin(name, brand) for name, brand
                                     in zip(stock["Товар"], stock["Бренд"])]
     # Штрихкод — текст: иначе Excel покажет его как 8,8096E+12.
