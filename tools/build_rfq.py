@@ -32,6 +32,9 @@ OUT = "outputs/Заявка в Корею.xlsx"
 # По этим брендам спрашиваем весь остаток, а не долю: цены по ним нужны
 # точные, под реальный объем закупки.
 FULL_BRANDS = ("PETITFEE", "MANYO", "MA:NYO")
+# Добавляем в заявку позиции, которых у нас на складе нет: по этим линейкам
+# нужны цены на все тона, а не только на те, что уже стоят на полке.
+EXTRA = {"ENOUGH": r"FOUNDATION"}
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 ASK_FILL = PatternFill("solid", fgColor="FFF2CC")
@@ -71,11 +74,25 @@ def brand_from_name(name):
     return words[0].upper() if words else "БЕЗ БРЕНДА"
 
 
-def latin(name):
-    """Английская часть названия: русский хвост корейцу не нужен."""
-    head = re.split(r"[/|]", str(name))[0]
+def latin(name, brand=None):
+    """Английская часть названия: русский хвост корейцу не нужен.
+
+    В прайсе Классика тон вынесен и в начало строки, и в конец, а после
+    вычистки кириллицы остаются обрывки вроде «3x» и «X10». Поэтому режем
+    строку от бренда и убираем повторы слов.
+    """
+    head = re.split(r"[/|]", str(name))[0].replace("\\", "")
+    if brand and brand.upper() in head.upper():
+        head = head[head.upper().index(brand.upper()):]
     head = re.sub(r"[а-яё]", "", head, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", head).strip(" -")
+    words, seen = [], set()
+    for word in head.split():
+        key = word.upper().strip(",")
+        if key in seen or word == ",":
+            continue
+        seen.add(key)
+        words.append(word)
+    return re.sub(r"\s+", " ", " ".join(words)).strip(" -,")
 
 
 def main(share, cap, step, floor):
@@ -104,25 +121,42 @@ def main(share, cap, step, floor):
     quantity[full] = stock.loc[full, "Остаток, шт"]
     stock["Запрашиваем, шт"] = quantity.fillna(floor).astype(int)
     stock["Бренд"] = stock["Бренд"].fillna(stock["Товар"].map(brand_from_name))
-    stock["Название для заявки"] = stock["Товар"].map(latin)
+
+    # Дотягиваем недостающие тона по линейкам из EXTRA.
+    known = set(stock["Штрихкод"].dropna())
+    additions = []
+    for brand, pattern in EXTRA.items():
+        rows = prices[(prices["Бренд"].fillna("").str.upper() == brand)
+                      & prices["Название EN"].str.upper().str.contains(pattern)]
+        for _, row in rows.iterrows():
+            if row["Штрихкод"] in known:
+                continue
+            additions.append({"Товар": row["Название EN"], "Остаток, шт": 0,
+                              "Бренд": brand, "Штрихкод": row["Штрихкод"],
+                              "Запрашиваем, шт": floor,
+                              "Закупка, KRW": row["Закупка, KRW"],
+                              "Поставщик": row["Поставщик"]})
+    if additions:
+        stock = pd.concat([stock, pd.DataFrame(additions)], ignore_index=True)
+        print(f"Добавлено позиций, которых нет на складе: {len(additions)}")
+    stock["Название для заявки"] = [latin(name, brand) for name, brand
+                                    in zip(stock["Товар"], stock["Бренд"])]
     # Штрихкод — текст: иначе Excel покажет его как 8,8096E+12.
     stock["Штрихкод"] = stock["Штрихкод"].fillna("").astype(str).str.replace(r"\.0$", "", regex=True)
     stock["Цена, KRW"] = None
     stock["Срок поставки"] = None
     stock["Комментарий поставщика"] = None
 
+    # В файл, который уходит поставщику, лишнего не кладем: только то, что
+    # ему нужно, чтобы понять товар и проставить цену.
     columns = ["Бренд", "Название для заявки", "Штрихкод", "Запрашиваем, шт",
-               "Цена, KRW", "Срок поставки", "Комментарий поставщика",
-               "Остаток, шт", "Товар", "Последняя известная цена, KRW", "Где видели"]
-    stock = stock.rename(columns={"Закупка, KRW": "Последняя известная цена, KRW",
-                                  "Поставщик": "Где видели"})
+               "Цена, KRW", "Срок поставки", "Комментарий поставщика"]
     order = stock.sort_values(["Бренд", "Название для заявки"], na_position="last")[columns]
     order.insert(0, "№", range(1, len(order) + 1))
 
     footer = {column: None for column in order.columns}
     footer.update({"Бренд": "ИТОГО",
-                   "Запрашиваем, шт": order["Запрашиваем, шт"].sum(),
-                   "Остаток, шт": order["Остаток, шт"].sum()})
+                   "Запрашиваем, шт": order["Запрашиваем, шт"].sum()})
     order = pd.concat([order, pd.DataFrame([footer])], ignore_index=True)
 
     with pd.ExcelWriter(OUT) as writer:
@@ -149,8 +183,7 @@ def main(share, cap, step, floor):
 
     known = int((order["Штрихкод"].fillna("").astype(str).str.len() >= 8).sum())
     print(f"Позиций в заявке: {len(order) - 1}   со штрихкодом: {known}")
-    print(f"Запрашиваем всего: {int(order['Запрашиваем, шт'].iloc[-1])} шт "
-          f"при остатке {int(order['Остаток, шт'].iloc[-1])} шт")
+    print(f"Запрашиваем всего: {int(order['Запрашиваем, шт'].iloc[-1])} шт")
     print(f"Доля от остатка: {share}%, потолок {cap} шт, минимум {floor} шт")
     print(f"\nФайл: {OUT}")
 
