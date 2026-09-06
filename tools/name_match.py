@@ -38,8 +38,14 @@ def _unique(candidates):
     return candidates[0] if len(candidates) == 1 else None
 
 
-def match(left_names, right_names):
-    """Возвращает {индекс слева: индекс справа} для однозначных пар."""
+def match(left_names, right_names, loose=False, guard=None):
+    """Возвращает {индекс слева: индекс справа} для однозначных пар.
+
+    loose — добавить заход по похожести названий. Он находит больше пар,
+    но может свести разные товары, поэтому включается явно и обычно с
+    проверкой guard(индекс слева, индекс справа), которая подтверждает
+    пару по чему-то надежному, например по бренду.
+    """
     left_text = {index: normal(name) for index, name in left_names.items()}
     right_text = {index: normal(name) for index, name in right_names.items()}
     left_words = {index: words(name) for index, name in left_names.items()}
@@ -72,4 +78,28 @@ def match(left_names, right_names):
     # другой выносит фасовку в отдельную колонку.
     run(lambda a, b: bool(left_bare[a]) and bool(right_bare[b]) and (
         left_bare[a] <= right_bare[b] or right_bare[b] <= left_bare[a]))
+
+    if not loose:
+        return pairs
+
+    # Заход по похожести. Берем самого похожего кандидата, но только если
+    # он заметно обходит следующего: иначе это гадание.
+    for index in left_names.index:
+        if index in pairs or not left_bare[index]:
+            continue
+        scored = []
+        for other in right_names.index:
+            if other in taken or not right_bare[other]:
+                continue
+            common = left_bare[index] & right_bare[other]
+            if not common or (guard and not guard(index, other)):
+                continue
+            scored.append((len(common) / len(left_bare[index] | right_bare[other]), other))
+        if not scored:
+            continue
+        scored.sort(reverse=True)
+        best, runner = scored[0], scored[1] if len(scored) > 1 else (0, None)
+        if best[0] >= 0.55 and best[0] - runner[0] >= 0.1:
+            pairs[index] = best[1]
+            taken.add(best[1])
     return pairs
