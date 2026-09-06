@@ -15,7 +15,7 @@ GIVE = 3000
 # Отдельные позиции даем меньше стандартных 3000: по ним свои причины.
 OVERRIDES = {"FARMSTAY - Black Garlic Nourishing Shampoo": 1000}
 # Позиции, которых на складе меньше порога, но в заказ их берем отдельно.
-ADDITIONS = {"FARMSTAY - Argan Oil Complete Volume Up Shampoo": 2000}
+ADDITIONS = {"FARMSTAY - Argan Oil Complete Volume Up Shampoo": 1000}
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 TOTAL_FILL = PatternFill("solid", fgColor="FFF2CC")
