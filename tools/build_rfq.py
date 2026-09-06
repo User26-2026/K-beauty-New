@@ -228,8 +228,8 @@ def main(share, cap, step, floor):
         if target is None:
             keep.append(index)
             continue
-        stock.loc[target, "Запрашиваем, шт"] = max(stock.loc[target, "Запрашиваем, шт"],
-                                                   row["Запрашиваем, шт"])
+        # Ставим ровно то количество, которое назвал покупатель.
+        stock.loc[target, "Запрашиваем, шт"] = row["Запрашиваем, шт"]
     if keep:
         stock = pd.concat([stock, wanted.loc[keep]], ignore_index=True)
         print(f"Из заявки покупателя добавлено позиций: {len(keep)}")
