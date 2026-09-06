@@ -1,4 +1,4 @@
-"""Сверка инвойса с прайсами: не переплатили ли мы за закупку.
+"""Сверка инвойсов с прайсами: не переплатили ли мы за закупку.
 
 По каждой позиции инвойса ищем тот же штрихкод в прайсах корейских
 поставщиков и считаем, во сколько обошлась бы та же партия у них.
@@ -20,7 +20,7 @@ from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from landed_cost import INVOICE, read_invoice
+from landed_cost import INVOICE, MANIFEST, clean_barcode, read_invoice
 from rates import KRW_RUB
 from supplier_brand_matrix import split_conflicts, tokens
 
@@ -76,14 +76,24 @@ def with_total(table, label_column, sums, label="ИТОГО"):
     return pd.concat([table, pd.DataFrame([footer])], ignore_index=True)
 
 
-def main(country, bought_from):
+def read_shipments():
+    """Обе поставки одной таблицей: контейнер и машина."""
     invoice, _ = read_invoice(INVOICE)
     invoice = invoice[invoice["Штрихкод"].notna()].copy()
+    invoice["Поставка"] = "контейнер"
+
+    truck = pd.read_csv(MANIFEST, sep=";", dtype={"Штрихкод": str})
+    truck["Штрихкод"] = truck["Штрихкод"].map(clean_barcode)
+    truck = truck.rename(columns={"Количество": "Загружено, шт"})
+    truck["Бренд"] = truck["Товар"].str.split().str[0].str.upper()
+    truck["Поставка"] = "машина"
+    columns = ["Поставка", "Бренд", "Товар", "Штрихкод", "Загружено, шт", "Цена, KRW"]
+    return pd.concat([invoice[columns], truck[columns]], ignore_index=True)
+
+
+def main(country, bought_from):
+    invoice = read_shipments()
     market = supplier_prices(country)
-    # Поставщик, у которого мы купили, в альтернативы не годится: его
-    # прайс другой даты, и разница с ним — это рост цены, а не выбор.
-    if bought_from:
-        market = market[market["Поставщик"] != bought_from]
     suppliers = sorted(market["Поставщик"].unique())
 
     prices = market.pivot(index="Штрихкод", columns="Поставщик", values="Закупка, KRW")
@@ -95,6 +105,11 @@ def main(country, bought_from):
         offers = {}
         if code in prices.index:
             for supplier in suppliers:
+                # Поставщик, у которого мы купили эту поставку, в
+                # альтернативы не годится: его прайс другой даты, и
+                # разница с ним — рост цены, а не упущенный выбор.
+                if supplier == bought_from.get(item["Поставка"]):
+                    continue
                 price = prices.loc[code, supplier]
                 if pd.isna(price):
                     continue
@@ -103,6 +118,7 @@ def main(country, bought_from):
                 offers[supplier] = float(price)
 
         record = {
+            "Поставка": item["Поставка"],
             "Бренд": item["Бренд"],
             "Товар": item["Товар"],
             "Штрихкод": code,
@@ -140,6 +156,22 @@ def main(country, bought_from):
                            "Переплата, руб": ("Переплата на партии, руб", "sum")})
                    .reset_index().sort_values("Переплата, руб", ascending=False))
     by_supplier = with_total(by_supplier, "Дешевле всех", ["Позиций", "Переплата, руб"])
+
+    # Отдельно свод по поставкам: контейнер и машина.
+    by_shipment = (found.groupby("Поставка")
+                   .agg(**{"Позиций": ("Товар", "size"),
+                           "Куплено, шт": ("Куплено, шт", "sum"),
+                           "Сумма закупки, руб": ("Сумма закупки, KRW",
+                                                  lambda values: round(values.sum() * KRW_RUB)),
+                           "Переплата, руб": ("Переплата на партии, руб",
+                                              lambda values: int(values[values > 0].sum()))})
+                   .reset_index())
+    by_shipment["Переплата к закупке, %"] = (by_shipment["Переплата, руб"] /
+                                             by_shipment["Сумма закупки, руб"] * 100).round(1)
+    by_shipment = with_total(by_shipment, "Поставка",
+                             ["Позиций", "Куплено, шт", "Сумма закупки, руб", "Переплата, руб"])
+    by_shipment.iloc[-1, by_shipment.columns.get_loc("Переплата к закупке, %")] = round(
+        by_shipment["Переплата, руб"].iloc[-1] / by_shipment["Сумма закупки, руб"].iloc[-1] * 100, 1)
 
     # Свод по брендам: где деньги, а где просто проценты.
     by_brand = (found.groupby("Бренд")
@@ -183,7 +215,9 @@ def main(country, bought_from):
         {"Показатель": "ПЕРЕПЛАТА ВСЕГО, РУБ",
          "Значение": int(overpaid["Переплата на партии, руб"].sum())},
         {"Показатель": "Позиций в инвойсе", "Значение": len(table)},
-        {"Показатель": "Купили у", "Значение": bought_from or "не указано"},
+        {"Показатель": "Купили у",
+         "Значение": ", ".join(f"{key}: {value}" for key, value in bought_from.items())
+                     or "не указано"},
         {"Показатель": "Нашлось в прайсах поставщиков", "Значение": len(found)},
         {"Показатель": "Не с чем сравнить", "Значение": len(missing)},
         {"Показатель": "Позиций, где мы купили дороже", "Значение": len(overpaid)},
@@ -201,6 +235,7 @@ def main(country, bought_from):
     with pd.ExcelWriter(OUT) as writer:
         total.to_excel(writer, sheet_name="ИТОГО", index=False)
         whole.to_excel(writer, sheet_name="ВЕСЬ ИНВОЙС", index=False)
+        by_shipment.to_excel(writer, sheet_name="ПО ПОСТАВКАМ", index=False)
         by_brand.to_excel(writer, sheet_name="ПО БРЕНДАМ", index=False)
         by_supplier.to_excel(writer, sheet_name="У КОГО ДЕШЕВЛЕ", index=False)
         paid.to_excel(writer, sheet_name="ПЕРЕПЛАТИЛИ", index=False)
@@ -217,6 +252,7 @@ def main(country, bought_from):
                 cell.alignment = Alignment(wrap_text=True, vertical="center")
                 sheet.column_dimensions[get_column_letter(index)].width = (
                     52 if title == "Товар" else 40 if title == "Показатель" else
+                    14 if title == "Поставка" else
                     18 if title in ("Дешевле всех", "Бренд") else 14)
                 if "KRW" in title or "руб" in title or "шт" in title:
                     for row in sheet.iter_rows(min_row=2, min_col=index, max_col=index):
@@ -262,7 +298,8 @@ def main(country, bought_from):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Сверка инвойса с прайсами")
     parser.add_argument("--country", default=COUNTRY)
-    parser.add_argument("--bought-from", default="Papa Cosmetic",
-                        help="у кого купили: его прайс в альтернативы не берем")
+    parser.add_argument("--bought-from", default="контейнер=Papa Cosmetic",
+                        help="у кого купили поставку: «поставка=поставщик» через запятую")
     args = parser.parse_args()
-    main(args.country, args.bought_from)
+    sold_by = dict(part.split("=", 1) for part in args.bought_from.split(",") if "=" in part)
+    main(args.country, sold_by)
