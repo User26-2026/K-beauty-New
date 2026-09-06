@@ -95,6 +95,11 @@ def main(country, bought_from):
     invoice = read_shipments()
     market = supplier_prices(country)
     suppliers = sorted(market["Поставщик"].unique())
+    # Товар, который едет обеими поставками, сравниваем сам с собой: наша
+    # же фактическая цена честнее прайса, она подтверждена сделкой.
+    ours = {name: group.set_index("Штрихкод")["Цена, KRW"].to_dict()
+            for name, group in invoice.groupby("Поставка")}
+    own_columns = [f"наш инвойс: {name}" for name in sorted(ours)]
 
     prices = market.pivot(index="Штрихкод", columns="Поставщик", values="Закупка, KRW")
     names = market.pivot(index="Штрихкод", columns="Поставщик", values="Название EN")
@@ -117,6 +122,11 @@ def main(country, bought_from):
                     continue
                 offers[supplier] = float(price)
 
+        for shipment, prices_by_code in ours.items():
+            if shipment == item["Поставка"] or code not in prices_by_code:
+                continue
+            offers[f"наш инвойс: {shipment}"] = float(prices_by_code[code])
+
         record = {
             "Поставка": item["Поставка"],
             "Бренд": item["Бренд"],
@@ -126,12 +136,12 @@ def main(country, bought_from):
             "Наша цена, KRW": item["Цена, KRW"],
             "Сумма закупки, KRW": item["Цена, KRW"] * item["Загружено, шт"],
         }
-        record.update({supplier: offers.get(supplier) for supplier in suppliers})
+        record.update({column: offers.get(column) for column in suppliers + own_columns})
         if offers:
             best = min(offers, key=offers.get)
             record["Дешевле всех"] = best
-            record["Прайс"] = market.loc[
-                (market["Штрихкод"] == code) & (market["Поставщик"] == best), "Файл"].iloc[0]
+            source = market.loc[(market["Штрихкод"] == code) & (market["Поставщик"] == best), "Файл"]
+            record["Прайс"] = source.iloc[0] if len(source) else "инвойс этой поставки"
             record["Лучшая цена, KRW"] = offers[best]
             record["Разница на штуке, KRW"] = round(item["Цена, KRW"] - offers[best])
             record["Мы дороже на, %"] = round(
