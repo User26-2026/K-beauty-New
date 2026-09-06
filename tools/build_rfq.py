@@ -29,6 +29,10 @@ STOCK = "data/stock_costs/Остатки_31.08.2026_форма_заказа.xlsx
 PRICES = "outputs/prices_normalized.xlsx"
 OUT = "outputs/Заявка в Корею.xlsx"
 
+# По этим брендам спрашиваем весь остаток, а не долю: цены по ним нужны
+# точные, под реальный объем закупки.
+FULL_BRANDS = ("PETITFEE", "MANYO", "MA:NYO")
+
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 ASK_FILL = PatternFill("solid", fgColor="FFF2CC")
 TOTAL_FILL = PatternFill("solid", fgColor="C6EFCE")
@@ -95,7 +99,10 @@ def main(share, cap, step, floor):
 
     quantity = (stock["Остаток, шт"] * share / 100).clip(upper=cap)
     quantity = (quantity / step).round() * step
-    stock["Запрашиваем, шт"] = quantity.clip(lower=floor).fillna(floor).astype(int)
+    quantity = quantity.clip(lower=floor).fillna(floor)
+    full = stock["Товар"].str.upper().str.startswith(FULL_BRANDS)
+    quantity[full] = stock.loc[full, "Остаток, шт"]
+    stock["Запрашиваем, шт"] = quantity.fillna(floor).astype(int)
     stock["Бренд"] = stock["Бренд"].fillna(stock["Товар"].map(brand_from_name))
     stock["Название для заявки"] = stock["Товар"].map(latin)
     # Штрихкод — текст: иначе Excel покажет его как 8,8096E+12.
