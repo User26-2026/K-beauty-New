@@ -236,6 +236,12 @@ def main(share, cap, step, floor):
 
     stock["Название для заявки"] = [latin(name, brand) for name, brand
                                     in zip(stock["Товар"], stock["Бренд"])]
+    # Круглые числа: меньше сотни округляем до сотни, дальше до сотен.
+    # 614 штук в заявке выглядят как выгрузка из учета, 600 — как заказ.
+    quantity = pd.to_numeric(stock["Запрашиваем, шт"], errors="coerce").fillna(0)
+    rounded = ((quantity + 50) // 100 * 100).clip(lower=100)
+    stock["Запрашиваем, шт"] = rounded.astype(int)
+
     # Штрихкод — текст: иначе Excel покажет его как 8,8096E+12.
     stock["Штрихкод"] = stock["Штрихкод"].fillna("").astype(str).str.replace(r"\.0$", "", regex=True)
     stock["Цена, KRW"] = None
