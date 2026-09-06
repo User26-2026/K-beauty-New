@@ -12,6 +12,8 @@ PLAN = "data/shipments/2026-09_plan_raspredeleniya.xlsx"
 OUT = "outputs/Заказ покупателю.xlsx"
 MIN_STOCK = 3000
 GIVE = 3000
+# Отдельные позиции даем меньше стандартных 3000: по ним свои причины.
+OVERRIDES = {"FARMSTAY - Black Garlic Nourishing Shampoo": 1000}
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 TOTAL_FILL = PatternFill("solid", fgColor="FFF2CC")
@@ -46,7 +48,14 @@ pairs = name_match.match(order["Товар"], plan["Наименование"])
 order["Приход, шт"] = [plan.loc[pairs[index], "Приход, шт"] if index in pairs else 0
                        for index in order.index]
 
-order["Отгружаем, шт"] = GIVE
+def give(name):
+    for key, quantity in OVERRIDES.items():
+        if key.lower() in str(name).lower():
+            return quantity
+    return GIVE
+
+
+order["Отгружаем, шт"] = order["Товар"].map(give)
 order["Сумма, руб"] = (order["Отгружаем, шт"] * order["Себестоимость, руб"]).round(0)
 order["Останется на складе, шт"] = order["Остаток, шт"] - order["Отгружаем, шт"]
 order["С учетом прихода, шт"] = order["Останется на складе, шт"] + order["Приход, шт"]
