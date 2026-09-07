@@ -34,6 +34,29 @@ def words(name, drop_volume=False):
     return parts
 
 
+def to_one(left_names, right_names):
+    """Каждой строке слева — своя строка справа, но справа их можно
+    занимать повторно.
+
+    Так сводят приход со складом: один товар приезжает и контейнером, и
+    машиной, и обе строки должны лечь на одну позицию. Пару берем только
+    при единственном кандидате: слова левой строки должны целиком
+    входить в правую.
+    """
+    right_text = {index: normal(name) for index, name in right_names.items()}
+    right_words = {index: words(name, True) for index, name in right_names.items()}
+    pairs = {}
+    for index, name in left_names.items():
+        text, parts = normal(name), words(name, True)
+        fits = [other for other in right_names.index if right_text[other] == text]
+        if not fits and parts:
+            fits = [other for other in right_names.index
+                    if parts <= right_words[other]]
+        if len(fits) == 1:
+            pairs[index] = fits[0]
+    return pairs
+
+
 def _unique(candidates):
     return candidates[0] if len(candidates) == 1 else None
 

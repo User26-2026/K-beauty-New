@@ -24,7 +24,6 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import name_match
-from add_sales_price import normal
 from rates import KRW_RUB
 from sales_vs_stock import read_report
 from stock_forecast import run_out
@@ -68,27 +67,21 @@ def truck():
 
 
 def join(base, incoming, column):
-    """Приход к карточкам кабинета по названию: общего кода у них нет."""
-    by_text = {}
-    for index, name in base["Товар"].items():
-        by_text.setdefault(normal(name), index)
-    found = pd.Series([by_text.get(normal(name)) for name in incoming["Товар"]],
-                      index=incoming.index, dtype="object")
-    left = incoming.loc[found.isna(), "Товар"]
-    free = base.drop(index=[i for i in found.dropna()])
-    for index, other in name_match.match(left, free["Товар"], loose=True).items():
-        found[index] = other
+    """Приход к карточкам кабинета по названию: общего кода у них нет.
 
+    Одна позиция приезжает несколькими строками, поэтому сводим
+    many-to-one: строки прихода складываются на одну карточку.
+    """
+    pairs = name_match.to_one(incoming["Товар"], base["Товар"])
     base[column] = 0.0
     base[f"{column} цена"] = 0.0
     lost = []
     for index, item in incoming.iterrows():
-        target = found[index]
-        if pd.isna(target):
+        if index not in pairs:
             lost.append(item)
             continue
-        base.at[target, column] += item["Кол-во"]
-        base.at[target, f"{column} цена"] = item["Цена KRW"]
+        base.at[pairs[index], column] += item["Кол-во"]
+        base.at[pairs[index], f"{column} цена"] = item["Цена KRW"]
     return base, pd.DataFrame(lost)
 
 
