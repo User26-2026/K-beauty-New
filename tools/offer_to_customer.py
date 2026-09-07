@@ -45,6 +45,7 @@ from wholesale_vs_wb import MARGIN, SKIP
 TARGET = "outputs/Предложение покупателю.xlsx"
 
 HEAD = PatternFill("solid", fgColor="1F3864")
+BRAND = PatternFill("solid", fgColor="DDEBF7")
 TOTAL = PatternFill("solid", fgColor="E2EFDA")
 ASKED = PatternFill("solid", fgColor="FFF2CC")
 WHITE = Font(color="FFFFFF", bold=True)
@@ -267,12 +268,35 @@ def build(order, report, keep, give_rules=None, markup=None):
             pd.DataFrame(loss, columns=LOSS))
 
 
-def write(book, title, columns, rows, widths, total, money, price, note=None):
+def by_brand(rows, name_at):
+    """Строки, разложенные по брендам, с заголовком перед каждым блоком."""
+    ordered = sorted(rows, key=lambda row: (brand_of(row[name_at]), str(row[name_at])))
+    current, out, number = None, [], 0
+    for row in ordered:
+        brand = brand_of(row[name_at])
+        if brand != current:
+            current = brand
+            out.append((True, [None, brand] + [None] * (len(row) - 2)))
+        # Нумерация сквозная и по порядку в файле, а не по прежней сортировке.
+        number += 1
+        out.append((False, [number] + list(row[1:])))
+    return out
+
+
+def write(book, title, columns, rows, widths, total, money, price, note=None,
+          name_at=None):
     ws = book.create_sheet(title)
     ws.append(columns)
     for cell in ws[1]:
         cell.fill, cell.font = HEAD, WHITE
         cell.alignment = Alignment(wrap_text=True, vertical="center")
+    if name_at is not None:
+        for header, row in by_brand(rows, name_at):
+            ws.append(row)
+            if header:
+                for cell in ws[ws.max_row]:
+                    cell.fill, cell.font = BRAND, Font(bold=True)
+        rows = []
     for row in rows:
         ws.append(row)
     ws.append(total)
@@ -296,6 +320,43 @@ def write(book, title, columns, rows, widths, total, money, price, note=None):
 PATHS = {}
 
 
+def свод(book, offer, inside, loss):
+    """Первый лист: сколько по каждому бренду отдаем и что теряем."""
+    ws = book.create_sheet("ПО БРЕНДАМ")
+    columns = ["Бренд", "Позиций", "Отдаем, шт", "Сумма, руб", "Прибыль, руб",
+               "Останется у нас, шт", "Теряем на ходовом, руб"]
+    ws.append(columns)
+    for cell in ws[1]:
+        cell.fill, cell.font = HEAD, WHITE
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+
+    offer = offer.assign(Бренд=offer["Наименование"].map(brand_of))
+    inside = inside.assign(Бренд=inside["Наименование"].map(brand_of))
+    lost = (loss.assign(Бренд=loss["Наименование"].map(brand_of))
+            .groupby("Бренд")["Потеряем, руб"].sum() if len(loss) else {})
+    stays = inside.groupby("Бренд")["Останется у нас, шт"].sum()
+    profit = inside.groupby("Бренд")["Прибыль, руб"].sum()
+
+    for brand, part in offer.groupby("Бренд", sort=True):
+        ws.append([brand, len(part), int(part["Количество, шт"].sum()),
+                   int(part["Сумма, руб"].sum()), int(profit.get(brand, 0)),
+                   int(stays.get(brand, 0)),
+                   int(lost.get(brand, 0)) if len(lost) else 0])
+    ws.append(["ВСЕГО", len(offer), int(offer["Количество, шт"].sum()),
+               int(offer["Сумма, руб"].sum()), int(inside["Прибыль, руб"].sum()),
+               int(inside["Останется у нас, шт"].sum()),
+               int(loss["Потеряем, руб"].sum()) if len(loss) else 0])
+    for cell in ws[ws.max_row]:
+        cell.fill, cell.font = TOTAL, Font(bold=True)
+    for index, width in enumerate([20, 10, 13, 15, 15, 18, 20], start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    for letter in "BCDEFG":
+        for cell in ws[letter][1:]:
+            cell.number_format = "# ##0"
+    ws.freeze_panes = "A2"
+    return ws
+
+
 def main(source, sales_path, container_path, keep, target, list_only=False,
          everything=False, skip_brands=(), no_masks=False, give_rules=None,
          markup=None, kg_delivery=None):
@@ -315,9 +376,10 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
 
     book = Workbook()
     book.remove(book.active)
+    свод(book, offer, inside, loss)
     write(book, "ЧТО МОЖЕМ ОТГРУЗИТЬ", OFFER, offer.values.tolist(), OFFER_WIDTHS,
           ["", "ИТОГО", int(offer["Количество, шт"].sum()), "",
-           int(offer["Сумма, руб"].sum())], "CE", "D")
+           int(offer["Сумма, руб"].sum())], "CE", "D", name_at=1)
     if everything:
         inside = inside.sort_values("Сумма, руб", ascending=False)
         inside["№"] = range(1, len(inside) + 1)
@@ -328,7 +390,7 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
                int(inside["Можем отдать, шт"].sum()),
                int(inside["Останется у нас, шт"].sum()), "", "",
                int(inside["Сумма, руб"].sum()), int(inside["Прибыль, руб"].sum())],
-              "CDEFGJK", "I")
+              "CDEFGJK", "I", name_at=1)
     if kg_delivery is not None:
         prices = kyrgyz_prices()
         rows = []
@@ -355,7 +417,7 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
         kg_table["№"] = range(1, len(kg_table) + 1)
         write(book, "ЦЕНЫ В КИРГИЗИИ", KG, kg_table.values.tolist(), KG_WIDTHS,
               ["", "ИТОГО", "", "", f"позиций: {len(kg_table)}", "", "", "", "",
-               "", ""], "CDGHI", "F")
+               "", ""], "CDGHI", "F", name_at=1)
         print(f"Сверено с Киргизией: {len(kg_table)} позиций, "
               f"дешевле нашей себестоимости: {(kg_table['Разница, %'] < 0).sum()}")
     if len(loss):
@@ -367,7 +429,7 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
                int(loss["Продажи в месяц, шт"].sum()),
                int(loss["Прибыль оптом, руб"].sum()),
                int(loss["Прибыль на WB, руб"].sum()),
-               int(loss["Потеряем, руб"].sum()), ""], "CDEFG", "")
+               int(loss["Потеряем, руб"].sum()), ""], "CDEFG", "", name_at=1)
     if not list_only:
         write(book, "ВАША ЗАЯВКА", ORDER, ask.values.tolist(), ORDER_WIDTHS,
                ["", "ИТОГО", int(ask["Количество, шт"].sum()), "",
