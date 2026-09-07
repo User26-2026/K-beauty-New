@@ -216,6 +216,8 @@ def read_needs(path):
                                                errors="coerce")
     table = table.dropna(subset=["Нужно в месяц, шт"])
     table["Товар"] = table["Товар"].astype(str).str.strip()
+    # В заявке покупателя бренд местами набран с опечаткой.
+    table["Товар"] = table["Товар"].str.replace(r"^NOUGH\b", "ENOUGH", regex=True)
     table["Бренд"] = table["Товар"].map(brand_of)
     return table.reset_index(drop=True)
 
