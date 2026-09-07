@@ -99,6 +99,14 @@ def need_for(monthly, keep):
     return total
 
 
+def forced(name, rules):
+    """Ручное количество по позиции: «часть названия=штук» или «=половина»."""
+    for fragment, value in rules.items():
+        if fragment.lower() in str(name).lower():
+            return value
+    return None
+
+
 def drop(table, skip_brands, no_masks):
     """Убираем из предложения бренды и виды товара, которые не отдаем."""
     keep_rows = []
@@ -112,7 +120,8 @@ def drop(table, skip_brands, no_masks):
     return pd.DataFrame(keep_rows).reset_index(drop=True)
 
 
-def build(order, report, keep):
+def build(order, report, keep, give_rules=None):
+    give_rules = give_rules or {}
     base = attach(order, read_prices())
     found = sales_by_stock(base, report.rename(columns={"К нам, руб": "Выручка, руб"}))
     base["Продажи в месяц, шт"] = found["Продано, шт"]
@@ -129,7 +138,13 @@ def build(order, report, keep):
         monthly, price = item["Продажи в месяц, шт"], item["Продажная цена, руб"]
         if pd.isna(price):
             continue
-        give = int(max(0, min((rest + coming) - need_for(monthly, keep), rest)))
+        # Владелец может назначить количество сам — тогда расчет запаса
+        # не спорим, но больше остатка не отдаем.
+        hand = forced(item["Наименование"], give_rules)
+        if hand is None:
+            give = int(max(0, min((rest + coming) - need_for(monthly, keep), rest)))
+        else:
+            give = int(min(rest / 2 if hand == "половина" else float(hand), rest))
         if give:
             offer.append([len(offer) + 1, item["Наименование"], give, price,
                           round(price * give)])
@@ -184,14 +199,14 @@ PATHS = {}
 
 
 def main(source, sales_path, container_path, keep, target, list_only=False,
-         everything=False, skip_brands=(), no_masks=False):
+         everything=False, skip_brands=(), no_masks=False, give_rules=None):
     PATHS["container"] = container_path
     order = read_order(source, everything)
     if skip_brands or no_masks:
         before = len(order)
         order = drop(order, {brand.upper() for brand in skip_brands}, no_masks)
         print(f"Исключено позиций: {before - len(order)}")
-    offer, ask, inside = build(order, read_net(sales_path), keep)
+    offer, ask, inside = build(order, read_net(sales_path), keep, give_rules)
     offer = offer.sort_values("Сумма, руб", ascending=False)
     ask = ask.sort_values("Разница по выручке, руб", ascending=False)
     offer["№"] = range(1, len(offer) + 1)
@@ -251,7 +266,11 @@ if __name__ == "__main__":
     parser.add_argument("--skip-brand", action="append", default=[],
                         help="бренд, который не отдаем")
     parser.add_argument("--no-masks", action="store_true",
-                        help="не отдавать маски и патчи")
+                        help="не отдавать маски")
+    parser.add_argument("--give", action="append", default=[],
+                        help="назначить количество: «часть названия=штук» "
+                             "или «часть названия=половина»")
     args = parser.parse_args()
+    rules = dict(rule.split("=", 1) for rule in args.give)
     main(args.source, args.sales, args.container, args.keep, args.out,
-         args.list_only, args.everything, args.skip_brand, args.no_masks)
+         args.list_only, args.everything, args.skip_brand, args.no_masks, rules)
