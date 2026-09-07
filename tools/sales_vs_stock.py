@@ -14,6 +14,7 @@
 
 import argparse
 import os
+import re
 import sys
 
 import pandas as pd
@@ -30,6 +31,11 @@ TARGET = "outputs/Продажи и остатки.xlsx"
 REPORT = {0: "Артикул ВБ", 1: "Товар", 7: "FBO", 8: "FBS",
           15: "Продано за месяц, шт", 18: "Выручка за месяц, руб"}
 SKIP = 5
+# В кабинете остались карточки с прошлого товара — новогодние фигурки и
+# китайская электроника. К косметике они отношения не имеют и в анализ
+# ассортимента не идут.
+NOT_OURS = re.compile(r"^dm7dm|^СГ-|гирлянд|рация|триммер|скалер|перкуссионн",
+                      re.IGNORECASE)
 
 SHOWN = (["Артикул ВБ", "Товар", "Остаток, шт", "Продано за месяц, шт",
           "Выручка за месяц, руб"] + PLAN + [REST_COLUMN, "Хватит до", "Запас, месяцев"])
@@ -44,6 +50,7 @@ def read_report(path):
     for column in ("FBO", "FBS", "Продано за месяц, шт", "Выручка за месяц, руб"):
         table[column] = pd.to_numeric(table[column], errors="coerce").fillna(0)
     table["Остаток, шт"] = table["FBO"] + table["FBS"]
+    table = table[~table["Товар"].astype(str).str.contains(NOT_OURS)]
     return table.reset_index(drop=True)
 
 
