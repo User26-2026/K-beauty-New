@@ -64,6 +64,22 @@ INSIDE = ["№", "Наименование", "Остаток, шт", "В пут�
           "Можем отдать, шт", "Останется у нас, шт", "Нам хватит на, мес",
           "Цена, руб", "Сумма, руб", "Прибыль, руб"]
 INSIDE_WIDTHS = [5, 76, 12, 12, 15, 14, 15, 14, 11, 14, 14]
+# Что теряем, отдавая ходовое: на WB та же партия зарабатывает больше.
+LOSS = ["№", "Наименование", "Просит, шт", "Продажи в месяц, шт",
+        "Прибыль оптом, руб", "Прибыль на WB, руб", "Потеряем, руб",
+        "Во сколько раз WB выгоднее"]
+LOSS_WIDTHS = [5, 74, 12, 15, 15, 15, 14, 16]
+
+
+def read_report(path, column):
+    """Колонка отчета WB рядом с продажами: выручка или прибыль."""
+    columns = {1: "Товар", 15: "Продано, шт", column: "Выручка, руб"}
+    table = pd.read_excel(path, sheet_name=0, header=None).iloc[SKIP:]
+    table = table[list(columns)].rename(columns=columns)
+    table = table[table["Товар"].notna()]
+    for name in ("Продано, шт", "Выручка, руб"):
+        table[name] = pd.to_numeric(table[name], errors="coerce").fillna(0)
+    return table.reset_index(drop=True)
 
 
 def read_net(path):
@@ -136,9 +152,15 @@ def build(order, report, keep, give_rules=None, markup=None):
         round(money / sold) if sold else None
         for money, sold in zip(found["Выручка, руб"], found["Продано, шт"])
     ]
+    # Фактическая прибыль WB на штуку — из отчета за месяц.
+    earned = sales_by_stock(base, read_report(PATHS["sales"], 123))
+    base["Прибыль WB на штуку, руб"] = [
+        round(money / sold, 1) if sold else None
+        for money, sold in zip(earned["Выручка, руб"], earned["Продано, шт"])
+    ]
     base["В пути, шт"] = incoming(base)
 
-    offer, ask, inside = [], [], []
+    offer, ask, inside, loss = [], [], [], []
     for _, item in base.iterrows():
         rest, coming = item["Остаток, шт"], item["В пути, шт"]
         monthly, price = item["Продажи в месяц, шт"], item["Продажная цена, руб"]
@@ -165,6 +187,15 @@ def build(order, report, keep, give_rules=None, markup=None):
                            price, round(price * give),
                            round((price - item["Себестоимость, руб"]) * give)])
         want = int(item["Просит, шт"])
+        # Ходовое отдавать больно: считаем разницу на его количестве.
+        gain = item["Прибыль WB на штуку, руб"]
+        if want and monthly and pd.notna(gain):
+            opt = round((price - item["Себестоимость, руб"]) * want)
+            wb = round(gain * want)
+            if wb > opt:
+                loss.append([len(loss) + 1, item["Наименование"], want,
+                             int(monthly), opt, wb, wb - opt,
+                             round(wb / opt, 1) if opt > 0 else ""])
         net = item["Выручка на штуку, руб"]
         if want and pd.notna(net):
             ask.append([len(ask) + 1, item["Наименование"], want, price,
@@ -172,7 +203,8 @@ def build(order, report, keep, give_rules=None, markup=None):
                         round((net - price) * want)])
     return (pd.DataFrame(offer, columns=OFFER),
             pd.DataFrame(ask, columns=ORDER),
-            pd.DataFrame(inside, columns=INSIDE))
+            pd.DataFrame(inside, columns=INSIDE),
+            pd.DataFrame(loss, columns=LOSS))
 
 
 def write(book, title, columns, rows, widths, total, money, price, note=None):
@@ -213,7 +245,9 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
         before = len(order)
         order = drop(order, {brand.upper() for brand in skip_brands}, no_masks)
         print(f"Исключено позиций: {before - len(order)}")
-    offer, ask, inside = build(order, read_net(sales_path), keep, give_rules, markup)
+    PATHS["sales"] = sales_path
+    offer, ask, inside, loss = build(order, read_net(sales_path), keep,
+                                     give_rules, markup)
     offer = offer.sort_values("Сумма, руб", ascending=False)
     ask = ask.sort_values("Разница по выручке, руб", ascending=False)
     offer["№"] = range(1, len(offer) + 1)
@@ -235,6 +269,16 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
                int(inside["Останется у нас, шт"].sum()), "", "",
                int(inside["Сумма, руб"].sum()), int(inside["Прибыль, руб"].sum())],
               "CDEFGJK", "I")
+    if len(loss):
+        loss = loss.sort_values("Потеряем, руб", ascending=False)
+        loss["№"] = range(1, len(loss) + 1)
+        write(book, "ЧТО ТЕРЯЕМ НА ХОДОВОМ", LOSS, loss.values.tolist(),
+              LOSS_WIDTHS,
+              ["", "ИТОГО", int(loss["Просит, шт"].sum()),
+               int(loss["Продажи в месяц, шт"].sum()),
+               int(loss["Прибыль оптом, руб"].sum()),
+               int(loss["Прибыль на WB, руб"].sum()),
+               int(loss["Потеряем, руб"].sum()), ""], "CDEFG", "")
     if not list_only:
         write(book, "ВАША ЗАЯВКА", ORDER, ask.values.tolist(), ORDER_WIDTHS,
                ["", "ИТОГО", int(ask["Количество, шт"].sum()), "",
