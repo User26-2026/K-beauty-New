@@ -47,6 +47,22 @@ SHOWN = ["№", "Бренд", "Штрихкод", "Товар", "Количес�
 WIDTHS = [5, 18, 16, 74, 15, 12, 10, 14, 26]
 # Бренд в названии стоит первым словом, но у части позиций он из двух слов.
 SERVICE = re.compile(r"container|loading|freight|costs?\b", re.IGNORECASE)
+# Позиции, которых нет ни в остатках, ни в приходе, но они нужны в заявке.
+# Пары «штрихкод — название» сверены по прайсам поставщиков.
+ADD_POSITIONS = [
+    ("ETUDE", "8809820683118",
+     "ETUDE - Baking Powder Crunch Pore Scrub [200ml] / Очищающий скраб для лица с содой"),
+    ("ETUDE", "8809668028089",
+     "ETUDE - Baking Powder Pore Cleansing Foam [160ml] / Пенка для умывания с содой"),
+    ("ETUDE", "8809668028041",
+     "ETUDE - Baking Powder BB Deep Cleansing Foam [160ml] / "
+     "Пенка с содой для глубокого очищения и снятия макияжа"),
+    ("ETUDE", "8809820692707",
+     "ETUDE - Baking Powder Crunch Pore Scrub [24*7ml] / Очищающий скраб для лица с содой"),
+    ("ETUDE", "8809668028058",
+     "ETUDE - Baking Powder BB Deep Cleansing Foam [30ml] / "
+     "Пенка с содой для глубокого очищения"),
+]
 TWO_WORDS = {"ROUND", "SOME", "THE", "I'M", "DR."}
 # Один бренд пишут по-разному, в заявке он должен быть один.
 SAME_BRAND = {
@@ -151,6 +167,28 @@ def collect(stock_path, container_path):
     return pd.concat([stock, pd.DataFrame(extra)], ignore_index=True)
 
 
+def add_positions(table):
+    """Дописываем позиции из списка.
+
+    Если такая позиция уже есть по названию, новую строку не заводим, а
+    проставляем ей штрихкод: в остатках он не хранится.
+    """
+    known = set(table["Штрихкод"]) - {""}
+    by_name = {name_match.normal(name): index
+               for index, name in table["Товар"].items()}
+    rows = []
+    for brand, code, name in ADD_POSITIONS:
+        if code in known:
+            continue
+        found = by_name.get(name_match.normal(name))
+        if found is not None:
+            table.at[found, "Штрихкод"] = code
+            continue
+        rows.append({"Товар": name, "Остаток, шт": 0.0, "Штрихкод": code,
+                     "Бренд": brand, "Едет, шт": 0.0})
+    return pd.concat([table, pd.DataFrame(rows)], ignore_index=True) if rows else table
+
+
 def add_brands(table, brands):
     """Добавляем весь каталог названных брендов, без своих дублей."""
     for brand in brands:
@@ -210,7 +248,7 @@ def barcodes(table):
 
 
 def main(stock_path, container_path, sales_path, target, brands):
-    table = collect(stock_path, container_path)
+    table = add_positions(collect(stock_path, container_path))
     if brands:
         table = add_brands(table, brands)
     table["Количество, шт"] = quantities(table, sales_path)
