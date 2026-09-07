@@ -72,3 +72,29 @@ def resolve(df, barcode="Штрихкод", brand="Бренд", source="Файл
         if len(named) == 1:
             resolved.loc[group.index[broken]] = named[0]
     return resolved
+
+
+# Бренд в названии стоит первым словом, но у части позиций он из двух слов.
+TWO_WORDS = {"ROUND", "SOME", "THE", "I'M", "DR."}
+# Один бренд пишут по-разному, в заявке он должен быть один.
+SAME_BRAND = {
+    "ROUND": "ROUND LAB", "ROUND LAB": "ROUND LAB", "1025": "ROUND LAB",
+    "VT": "VT COSMETICS", "VT COSMETICS": "VT COSMETICS",
+    "SOME BY": "SOME BY MI", "SOME BY MI": "SOME BY MI",
+    "MA:NYO": "MANYO", "MANYO": "MANYO",
+    "DR. ALTHEA": "DR.ALTHEA", "DR.ALTHEA": "DR.ALTHEA",
+}
+
+
+def brand_of(name):
+    parts = re.split(r"[\s\-_,]+", str(name).strip())
+    if not parts:
+        return ""
+    first = parts[0].upper()
+    if first in TWO_WORDS and len(parts) > 1:
+        first = f"{first} {parts[1].upper()}"
+    return SAME_BRAND.get(first, first)
+
+
+def same(brand):
+    return SAME_BRAND.get(str(brand).strip().upper(), str(brand).strip().upper())

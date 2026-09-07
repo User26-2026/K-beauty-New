@@ -20,6 +20,7 @@
 
 import argparse
 import os
+import re
 import sys
 
 import pandas as pd
@@ -32,6 +33,7 @@ import name_match
 from add_sales_price import attach, normal, read_prices, sales_by_stock
 from check_customer_order import read_order
 from stock_forecast import SEASON, START, run_out
+from brand_names import brand_of
 from stock_with_incoming import read_container, truck
 from wholesale_vs_wb import MARGIN, SKIP
 
@@ -52,6 +54,9 @@ ORDER = ["№", "Наименование", "Количество, шт", "Це�
 # читали как разницу в прибыли.
 NOTE = ("Выручка на маркетплейсе указана после комиссии площадки и логистики, "
         "но до хранения, рекламы и налога.")
+# Маски держим себе. Пэды и патчи сюда не относим: это отдельный товар,
+# и под фильтр они попадали только из-за русского хвоста в названии.
+MASK = re.compile(r"\bmask|маск", re.IGNORECASE)
 ORDER_WIDTHS = [5, 76, 15, 14, 16, 18, 18, 15]
 # Внутренний лист: он остается у нас, поэтому здесь видно и остаток, и
 # сколько останется после отгрузки, и на сколько этого хватит.
@@ -92,6 +97,19 @@ def need_for(monthly, keep):
         total += monthly * SEASON.get(month, 1.0)
         month = 1 if month == 12 else month + 1
     return total
+
+
+def drop(table, skip_brands, no_masks):
+    """Убираем из предложения бренды и виды товара, которые не отдаем."""
+    keep_rows = []
+    for _, item in table.iterrows():
+        name = item["Наименование"]
+        if brand_of(name) in skip_brands:
+            continue
+        if no_masks and MASK.search(str(name)):
+            continue
+        keep_rows.append(item)
+    return pd.DataFrame(keep_rows).reset_index(drop=True)
 
 
 def build(order, report, keep):
@@ -166,9 +184,14 @@ PATHS = {}
 
 
 def main(source, sales_path, container_path, keep, target, list_only=False,
-         everything=False):
+         everything=False, skip_brands=(), no_masks=False):
     PATHS["container"] = container_path
-    offer, ask, inside = build(read_order(source, everything), read_net(sales_path), keep)
+    order = read_order(source, everything)
+    if skip_brands or no_masks:
+        before = len(order)
+        order = drop(order, {brand.upper() for brand in skip_brands}, no_masks)
+        print(f"Исключено позиций: {before - len(order)}")
+    offer, ask, inside = build(order, read_net(sales_path), keep)
     offer = offer.sort_values("Сумма, руб", ascending=False)
     ask = ask.sort_values("Разница по выручке, руб", ascending=False)
     offer["№"] = range(1, len(offer) + 1)
@@ -225,6 +248,10 @@ if __name__ == "__main__":
                         help="только список товаров, без сравнения с маркетплейсом")
     parser.add_argument("--all", action="store_true", dest="everything",
                         help="весь склад, а не только позиции из заявки покупателя")
+    parser.add_argument("--skip-brand", action="append", default=[],
+                        help="бренд, который не отдаем")
+    parser.add_argument("--no-masks", action="store_true",
+                        help="не отдавать маски и патчи")
     args = parser.parse_args()
     main(args.source, args.sales, args.container, args.keep, args.out,
-         args.list_only, args.everything)
+         args.list_only, args.everything, args.skip_brand, args.no_masks)

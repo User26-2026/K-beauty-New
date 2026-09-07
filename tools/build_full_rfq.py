@@ -25,6 +25,7 @@ from openpyxl.utils import get_column_letter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import add_barcodes
 import brand_names
+from brand_names import brand_of, same
 import name_match
 from add_sales_price import read_stock, sales_by_stock
 from offer_to_customer import need_for, read_net
@@ -45,7 +46,6 @@ WHITE = Font(color="FFFFFF", bold=True)
 SHOWN = ["№", "Бренд", "Штрихкод", "Товар", "Количество, шт", "Цена",
          "Валюта", "Срок поставки", "Комментарий поставщика"]
 WIDTHS = [5, 18, 16, 74, 15, 12, 10, 14, 26]
-# Бренд в названии стоит первым словом, но у части позиций он из двух слов.
 SERVICE = re.compile(r"container|loading|freight|costs?\b", re.IGNORECASE)
 # Позиции, которых нет ни в остатках, ни в приходе, но они нужны в заявке.
 # Пары «штрихкод — название» сверены по прайсам поставщиков.
@@ -63,29 +63,6 @@ ADD_POSITIONS = [
      "ETUDE - Baking Powder BB Deep Cleansing Foam [30ml] / "
      "Пенка с содой для глубокого очищения"),
 ]
-TWO_WORDS = {"ROUND", "SOME", "THE", "I'M", "DR."}
-# Один бренд пишут по-разному, в заявке он должен быть один.
-SAME_BRAND = {
-    "ROUND": "ROUND LAB", "ROUND LAB": "ROUND LAB", "1025": "ROUND LAB",
-    "VT": "VT COSMETICS", "VT COSMETICS": "VT COSMETICS",
-    "SOME BY": "SOME BY MI", "SOME BY MI": "SOME BY MI",
-    "MA:NYO": "MANYO", "MANYO": "MANYO",
-    "DR. ALTHEA": "DR.ALTHEA", "DR.ALTHEA": "DR.ALTHEA",
-}
-
-
-def brand_of(name):
-    parts = re.split(r"[\s\-_,]+", str(name).strip())
-    if not parts:
-        return ""
-    first = parts[0].upper()
-    if first in TWO_WORDS and len(parts) > 1:
-        first = f"{first} {parts[1].upper()}"
-    return SAME_BRAND.get(first, first)
-
-
-def same(brand):
-    return SAME_BRAND.get(str(brand).strip().upper(), str(brand).strip().upper())
 
 
 def read_invoice(path):
