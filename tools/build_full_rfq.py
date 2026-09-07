@@ -24,6 +24,7 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import add_barcodes
+import brand_names
 import name_match
 from add_sales_price import read_stock, sales_by_stock
 from offer_to_customer import need_for, read_net
@@ -89,6 +90,38 @@ def read_invoice(path):
     return table.reset_index(drop=True)
 
 
+def whole_brand(brand):
+    """Весь каталог бренда из прайсов поставщиков.
+
+    Берем по одной строке на штрихкод и самое подробное название из
+    имеющихся: у одного поставщика оно урезано до сорока знаков, у
+    другого записано целиком.
+    """
+    table = pd.read_excel(PRICES, dtype={"Штрихкод": str})
+    table = table[table["Страна"] == "KR"].copy()
+    table["Бренд в прайсе"] = table["Бренд"]
+    table["Бренд"] = brand_names.resolve(table).fillna("")
+    mark = re.sub(r"[^A-Z0-9]", "", brand.upper())
+    table = table[table["Бренд"].astype(str).str.upper()
+                  .str.replace(r"[^A-Z0-9]", "", regex=True) == mark]
+    table = table[table["Штрихкод"].notna() & (table["Штрихкод"].str.len() >= 8)]
+    if table.empty:
+        return pd.DataFrame(columns=["Товар", "Остаток, шт", "Штрихкод",
+                                     "Бренд", "Едет, шт"])
+    table["Длина"] = table["Название EN"].astype(str).str.len()
+    best = table.sort_values("Длина", ascending=False).drop_duplicates("Штрихкод")
+    names = []
+    for name, volume in zip(best["Название EN"], best["Объем"]):
+        # Сокращение бренда в начале названия разворачиваем полностью.
+        clean = re.sub(r"^ET\.\s*", "", str(name)).strip()
+        if pd.notna(volume) and str(volume) not in clean:
+            clean = f"{clean} [{volume}]"
+        names.append(f"{brand} {clean}")
+    return pd.DataFrame({"Товар": names, "Остаток, шт": 0.0,
+                         "Штрихкод": best["Штрихкод"].values,
+                         "Бренд": brand, "Едет, шт": 0.0})
+
+
 def collect(stock_path, container_path):
     """Один список позиций из остатков, контейнера и машины."""
     stock = read_stock(stock_path)[["Наименование", "Остаток, шт"]]
@@ -116,6 +149,19 @@ def collect(stock_path, container_path):
                       "Бренд": item["Бренд"] or brand_of(item["Товар"]),
                       "Едет, шт": item["Кол-во"]})
     return pd.concat([stock, pd.DataFrame(extra)], ignore_index=True)
+
+
+def add_brands(table, brands):
+    """Добавляем весь каталог названных брендов, без своих дублей."""
+    for brand in brands:
+        catalog = whole_brand(brand)
+        if catalog.empty:
+            print(f"В прайсах нет бренда {brand}")
+            continue
+        known = set(table["Штрихкод"]) - {""}
+        catalog = catalog[~catalog["Штрихкод"].isin(known)]
+        table = pd.concat([table, catalog], ignore_index=True)
+    return table
 
 
 def quantities(table, sales_path):
@@ -163,8 +209,10 @@ def barcodes(table):
     return filled
 
 
-def main(stock_path, container_path, sales_path, target):
+def main(stock_path, container_path, sales_path, target, brands):
     table = collect(stock_path, container_path)
+    if brands:
+        table = add_brands(table, brands)
     table["Количество, шт"] = quantities(table, sales_path)
     table["Штрихкод"] = barcodes(table)
     table["Бренд"] = table["Бренд"].map(same)
@@ -233,5 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--container", required=True)
     parser.add_argument("--sales", default="data/sales/wb_sales_2026-08.xls")
     parser.add_argument("--out", default=TARGET)
+    parser.add_argument("--brand", action="append", default=[],
+                        help="добавить весь каталог бренда из прайсов")
     args = parser.parse_args()
-    main(args.source, args.container, args.sales, args.out)
+    main(args.source, args.container, args.sales, args.out, args.brand)
