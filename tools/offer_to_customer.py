@@ -29,11 +29,16 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import add_barcodes
+import brand_names
 import name_match
 from add_sales_price import attach, normal, read_prices, sales_by_stock
+from rates import USD_RUB
 from check_customer_order import read_order
 from stock_forecast import SEASON, START, run_out
 from brand_names import brand_of
+
+PRICES_TABLE = "outputs/prices_normalized.xlsx"
 from stock_with_incoming import read_container, truck
 from wholesale_vs_wb import MARGIN, SKIP
 
@@ -69,6 +74,16 @@ LOSS = ["№", "Наименование", "Просит, шт", "Продажи
         "Прибыль оптом, руб", "Прибыль на WB, руб", "Потеряем, руб",
         "Во сколько раз WB выгоднее"]
 LOSS_WIDTHS = [5, 74, 12, 15, 15, 15, 14, 16]
+# Киргизия как запасной канал: цена местного прайса плюс довоз до Москвы.
+KG = ["№", "Наименование", "Наша себестоимость, руб", "Цена в Киргизии, руб",
+      "Поставщик", "Доставка, руб", "Итого из Киргизии, руб", "Разница, руб",
+      "Разница, %", "Замечание"]
+KG_WIDTHS = [5, 62, 16, 16, 16, 12, 16, 13, 12, 24]
+# Вид товара: маска и сыворотка с одинаковыми словами — разные вещи.
+KIND = {"MASK", "PAD", "PADS", "EYE", "SET", "KIT", "SERUM", "CREAM", "TONER",
+        "CLEANSER", "FOAM", "AMPOULE", "ESSENCE", "OIL", "BALM", "STICK",
+        "PATCH", "MIST", "GEL", "SUNSCREEN", "SHAMPOO", "LOTION", "SCRUB"}
+SCORE = 0.6
 
 
 def read_report(path, column):
@@ -113,6 +128,36 @@ def need_for(monthly, keep):
         total += monthly * SEASON.get(month, 1.0)
         month = 1 if month == 12 else month + 1
     return total
+
+
+def kind(name):
+    return {word for word in re.findall(r"[A-Z0-9]+", str(name).upper())
+            if word in KIND}
+
+
+def kyrgyz_prices():
+    """Прайсы киргизских поставщиков, приведенные к рублям."""
+    table = pd.read_excel(PRICES_TABLE, dtype={"Штрихкод": str})
+    table = table[(table["Страна"] == "KG") & table["Закупка, KRW"].notna()
+                  & (table["Закупка, KRW"] > 0)].copy()
+    table["Бренд в прайсе"] = table["Бренд"]
+    table["Бренд"] = brand_names.resolve(table).fillna("")
+    table["Марка"] = (table["Бренд"].astype(str).str.upper()
+                      .str.replace(r"[^A-Z0-9]", "", regex=True))
+    table["Слова"] = table["Название EN"].map(add_barcodes.words)
+    table["Тон"] = table["Название EN"].map(add_barcodes.tone)
+    table["Цена, руб"] = (table["Закупка, KRW"] * USD_RUB).round()
+    return table.reset_index(drop=True)
+
+
+def cheapest_kg(name, brand, prices):
+    """Самое дешевое предложение Киргизии по позиции, если оно надежное."""
+    fits = [(score, index) for score, index in
+            add_barcodes.candidates(name, brand, prices)
+            if score >= SCORE and kind(name) == kind(prices.at[index, "Название EN"])]
+    if not fits:
+        return None
+    return min(fits, key=lambda pair: prices.at[pair[1], "Цена, руб"])[1]
 
 
 def forced(name, rules):
@@ -238,7 +283,7 @@ PATHS = {}
 
 def main(source, sales_path, container_path, keep, target, list_only=False,
          everything=False, skip_brands=(), no_masks=False, give_rules=None,
-         markup=None):
+         markup=None, kg_delivery=None):
     PATHS["container"] = container_path
     order = read_order(source, everything)
     if skip_brands or no_masks:
@@ -269,6 +314,31 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
                int(inside["Останется у нас, шт"].sum()), "", "",
                int(inside["Сумма, руб"].sum()), int(inside["Прибыль, руб"].sum())],
               "CDEFGJK", "I")
+    if kg_delivery is not None:
+        prices = kyrgyz_prices()
+        rows = []
+        for _, item in read_order(source, True).iterrows():
+            cost = item["Себестоимость, руб"] / 1.1
+            found = cheapest_kg(item["Наименование"],
+                                brand_of(item["Наименование"]), prices)
+            if found is None:
+                continue
+            price = prices.at[found, "Цена, руб"]
+            total = price + kg_delivery
+            gap = round(total / cost * 100 - 100, 1)
+            # Разрыв в разы — это не цена, а разная фасовка: пробник из
+            # десяти пэдов против банки на шестьдесят.
+            rows.append([len(rows) + 1, item["Наименование"], round(cost), price,
+                         prices.at[found, "Поставщик"], kg_delivery, round(total),
+                         round(total - cost), gap,
+                         "сверить фасовку" if gap > 200 else ""])
+        kg_table = pd.DataFrame(rows, columns=KG).sort_values("Разница, %")
+        kg_table["№"] = range(1, len(kg_table) + 1)
+        write(book, "ЦЕНЫ В КИРГИЗИИ", KG, kg_table.values.tolist(), KG_WIDTHS,
+              ["", "ИТОГО", "", "", f"позиций: {len(kg_table)}", "", "", "", "", ""],
+              "CDFGH", "")
+        print(f"Сверено с Киргизией: {len(kg_table)} позиций, "
+              f"дешевле нашей себестоимости: {(kg_table['Разница, %'] < 0).sum()}")
     if len(loss):
         loss = loss.sort_values("Потеряем, руб", ascending=False)
         loss["№"] = range(1, len(loss) + 1)
@@ -318,6 +388,8 @@ if __name__ == "__main__":
                         help="бренд, который не отдаем")
     parser.add_argument("--no-masks", action="store_true",
                         help="не отдавать маски")
+    parser.add_argument("--kg-delivery", type=float,
+                        help="довоз из Киргизии до Москвы, руб на штуку")
     parser.add_argument("--markup", type=float,
                         help="ставить цену как себестоимость плюс наценку, %%")
     parser.add_argument("--give", action="append", default=[],
@@ -327,4 +399,4 @@ if __name__ == "__main__":
     rules = dict(rule.split("=", 1) for rule in args.give)
     main(args.source, args.sales, args.container, args.keep, args.out,
          args.list_only, args.everything, args.skip_brand, args.no_masks, rules,
-         args.markup)
+         args.markup, args.kg_delivery)
