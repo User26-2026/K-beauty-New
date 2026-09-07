@@ -11,6 +11,7 @@
 
 import argparse
 import os
+import re
 import sys
 
 import pandas as pd
@@ -38,17 +39,45 @@ SHOWN = ["Наименование", "Остаток, шт", "Просит, шт
 WIDTHS = [84, 12, 12, 13, 15, 12, 14, 14, 14, 15, 16, 14, 14, 26]
 
 
+# Колонку ищем по заголовку: складской файл и файл с заказом идут с
+# разной раскладкой, в заказе есть лишняя колонка с остатком после
+# отгрузки, и по номерам колонки не совпадают.
+HEADERS = {"Наименование": r"наименование", "Остаток, шт": r"^остаток",
+           # С/с в шапке набрано латиницей, хотя выглядит как кириллица.
+           "Себестоимость, руб": r"^[cс]\s*/?\s*[cс]$|себестоим",
+           "Просит, шт": r"^заказ"}
+
+
+def find_columns(table):
+    found = {}
+    for field, pattern in HEADERS.items():
+        for column in table.columns:
+            title = str(table[column].name)
+            if re.search(pattern, title, re.IGNORECASE) and field not in found:
+                found[field] = column
+    return found
+
+
 def read_order(path, everything=False):
     """Заказ покупателя: остаток, себестоимость и запрошенное количество.
 
     С everything берем все строки склада, а не только те, что он просит.
     """
     table = pd.read_excel(path, header=0)
-    table = table.iloc[:, [0, 2, 3, 5]]
-    table.columns = ["Наименование", "Остаток, шт", "Себестоимость, руб", "Просит, шт"]
+    columns = find_columns(table)
+    missing = set(HEADERS) - set(columns) - {"Просит, шт"}
+    if missing:
+        raise SystemExit(f"в файле не найдены колонки: {', '.join(sorted(missing))}")
+    table = table[[columns[field] for field in columns]]
+    table.columns = list(columns)
+    if "Просит, шт" not in table:
+        table["Просит, шт"] = 0
     table = table[table["Наименование"].notna()]
     for column in ("Остаток, шт", "Себестоимость, руб", "Просит, шт"):
-        table[column] = pd.to_numeric(table[column], errors="coerce")
+        # Количество приходит текстом с пробелом-разделителем тысяч.
+        table[column] = pd.to_numeric(
+            table[column].astype(str).str.replace(r"\s|\u00a0", "", regex=True),
+            errors="coerce")
     if everything:
         table = table[table["Остаток, шт"].notna()]
         table["Просит, шт"] = table["Просит, шт"].fillna(0)

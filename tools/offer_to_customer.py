@@ -120,9 +120,13 @@ def drop(table, skip_brands, no_masks):
     return pd.DataFrame(keep_rows).reset_index(drop=True)
 
 
-def build(order, report, keep, give_rules=None):
+def build(order, report, keep, give_rules=None, markup=None):
     give_rules = give_rules or {}
     base = attach(order, read_prices())
+    if markup is not None:
+        # Цена от себестоимости, а не из прайса: наценка одна на все товары.
+        base["Продажная цена, руб"] = (base["Себестоимость, руб"]
+                                       * (1 + markup / 100)).round()
     found = sales_by_stock(base, report.rename(columns={"К нам, руб": "Выручка, руб"}))
     base["Продажи в месяц, шт"] = found["Продано, шт"]
     # Выручка к перечислению на штуку — цена сравнения, без себестоимости.
@@ -199,14 +203,15 @@ PATHS = {}
 
 
 def main(source, sales_path, container_path, keep, target, list_only=False,
-         everything=False, skip_brands=(), no_masks=False, give_rules=None):
+         everything=False, skip_brands=(), no_masks=False, give_rules=None,
+         markup=None):
     PATHS["container"] = container_path
     order = read_order(source, everything)
     if skip_brands or no_masks:
         before = len(order)
         order = drop(order, {brand.upper() for brand in skip_brands}, no_masks)
         print(f"Исключено позиций: {before - len(order)}")
-    offer, ask, inside = build(order, read_net(sales_path), keep, give_rules)
+    offer, ask, inside = build(order, read_net(sales_path), keep, give_rules, markup)
     offer = offer.sort_values("Сумма, руб", ascending=False)
     ask = ask.sort_values("Разница по выручке, руб", ascending=False)
     offer["№"] = range(1, len(offer) + 1)
@@ -267,10 +272,13 @@ if __name__ == "__main__":
                         help="бренд, который не отдаем")
     parser.add_argument("--no-masks", action="store_true",
                         help="не отдавать маски")
+    parser.add_argument("--markup", type=float,
+                        help="ставить цену как себестоимость плюс наценку, %%")
     parser.add_argument("--give", action="append", default=[],
                         help="назначить количество: «часть названия=штук» "
                              "или «часть названия=половина»")
     args = parser.parse_args()
     rules = dict(rule.split("=", 1) for rule in args.give)
     main(args.source, args.sales, args.container, args.keep, args.out,
-         args.list_only, args.everything, args.skip_brand, args.no_masks, rules)
+         args.list_only, args.everything, args.skip_brand, args.no_masks, rules,
+         args.markup)
