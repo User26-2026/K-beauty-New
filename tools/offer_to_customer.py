@@ -76,9 +76,13 @@ LOSS = ["№", "Наименование", "Просит, шт", "Продажи
 LOSS_WIDTHS = [5, 74, 12, 15, 15, 15, 14, 16]
 # Киргизия как запасной канал: цена местного прайса плюс довоз до Москвы.
 KG = ["№", "Наименование", "Наша себестоимость, руб", "Цена в Киргизии, руб",
-      "Поставщик", "Доставка, руб", "Итого из Киргизии, руб", "Разница, руб",
-      "Разница, %", "Замечание"]
-KG_WIDTHS = [5, 62, 16, 16, 16, 12, 16, 13, 12, 24]
+      "Поставщик", "Вес, кг", "Доставка, руб", "Итого из Киргизии, руб",
+      "Разница, руб", "Разница, %", "Замечание"]
+KG_WIDTHS = [5, 58, 16, 16, 16, 10, 12, 16, 13, 12, 24]
+# Веса в прайсах нет, берем объем из названия: миллилитр считаем за грамм.
+VOLUME = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ml|мл|g|гр|г|kg|кг)\b", re.IGNORECASE)
+PACKING = 1.4        # упаковка и коробка сверх веса самого средства
+DEFAULT_WEIGHT = 0.2  # если объем в названии не написан
 # Вид товара: маска и сыворотка с одинаковыми словами — разные вещи.
 KIND = {"MASK", "PAD", "PADS", "EYE", "SET", "KIT", "SERUM", "CREAM", "TONER",
         "CLEANSER", "FOAM", "AMPOULE", "ESSENCE", "OIL", "BALM", "STICK",
@@ -133,6 +137,17 @@ def need_for(monthly, keep):
 def kind(name):
     return {word for word in re.findall(r"[A-Z0-9]+", str(name).upper())
             if word in KIND}
+
+
+def weight_of(name):
+    """Вес брутто одной штуки в килограммах, оценка по объему."""
+    found = VOLUME.search(str(name))
+    if not found:
+        return DEFAULT_WEIGHT, True
+    value = float(found.group(1).replace(",", "."))
+    if found.group(2).lower() in ("kg", "кг"):
+        return round(value * PACKING, 3), False
+    return round(value / 1000 * PACKING, 3), False
 
 
 def kyrgyz_prices():
@@ -324,19 +339,23 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
             if found is None:
                 continue
             price = prices.at[found, "Цена, руб"]
-            total = price + kg_delivery
+            weight, guessed = weight_of(item["Наименование"])
+            delivery = round(weight * kg_delivery)
+            total = price + delivery
             gap = round(total / cost * 100 - 100, 1)
             # Разрыв в разы — это не цена, а разная фасовка: пробник из
             # десяти пэдов против банки на шестьдесят.
+            notes = ["вес не из названия"] if guessed else []
+            if gap > 200:
+                notes.append("сверить фасовку")
             rows.append([len(rows) + 1, item["Наименование"], round(cost), price,
-                         prices.at[found, "Поставщик"], kg_delivery, round(total),
-                         round(total - cost), gap,
-                         "сверить фасовку" if gap > 200 else ""])
+                         prices.at[found, "Поставщик"], weight, delivery,
+                         round(total), round(total - cost), gap, ", ".join(notes)])
         kg_table = pd.DataFrame(rows, columns=KG).sort_values("Разница, %")
         kg_table["№"] = range(1, len(kg_table) + 1)
         write(book, "ЦЕНЫ В КИРГИЗИИ", KG, kg_table.values.tolist(), KG_WIDTHS,
-              ["", "ИТОГО", "", "", f"позиций: {len(kg_table)}", "", "", "", "", ""],
-              "CDFGH", "")
+              ["", "ИТОГО", "", "", f"позиций: {len(kg_table)}", "", "", "", "",
+               "", ""], "CDGHI", "F")
         print(f"Сверено с Киргизией: {len(kg_table)} позиций, "
               f"дешевле нашей себестоимости: {(kg_table['Разница, %'] < 0).sum()}")
     if len(loss):
@@ -389,7 +408,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-masks", action="store_true",
                         help="не отдавать маски")
     parser.add_argument("--kg-delivery", type=float,
-                        help="довоз из Киргизии до Москвы, руб на штуку")
+                        help="довоз из Киргизии до Москвы, руб за килограмм")
     parser.add_argument("--markup", type=float,
                         help="ставить цену как себестоимость плюс наценку, %%")
     parser.add_argument("--give", action="append", default=[],
