@@ -38,14 +38,21 @@ SHOWN = ["Наименование", "Остаток, шт", "Просит, шт
 WIDTHS = [84, 12, 12, 13, 15, 12, 14, 14, 14, 15, 16, 14, 14, 26]
 
 
-def read_order(path):
-    """Заказ покупателя: остаток, себестоимость и запрошенное количество."""
+def read_order(path, everything=False):
+    """Заказ покупателя: остаток, себестоимость и запрошенное количество.
+
+    С everything берем все строки склада, а не только те, что он просит.
+    """
     table = pd.read_excel(path, header=0)
     table = table.iloc[:, [0, 2, 3, 5]]
     table.columns = ["Наименование", "Остаток, шт", "Себестоимость, руб", "Просит, шт"]
     table = table[table["Наименование"].notna()]
     for column in ("Остаток, шт", "Себестоимость, руб", "Просит, шт"):
         table[column] = pd.to_numeric(table[column], errors="coerce")
+    if everything:
+        table = table[table["Остаток, шт"].notna()]
+        table["Просит, шт"] = table["Просит, шт"].fillna(0)
+        return table.reset_index(drop=True)
     return table[table["Просит, шт"].notna() & (table["Просит, шт"] > 0)].reset_index(drop=True)
 
 

@@ -53,6 +53,12 @@ ORDER = ["№", "Наименование", "Количество, шт", "Це�
 NOTE = ("Выручка на маркетплейсе указана после комиссии площадки и логистики, "
         "но до хранения, рекламы и налога.")
 ORDER_WIDTHS = [5, 76, 15, 14, 16, 18, 18, 15]
+# Внутренний лист: он остается у нас, поэтому здесь видно и остаток, и
+# сколько останется после отгрузки, и на сколько этого хватит.
+INSIDE = ["№", "Наименование", "Остаток, шт", "В пути, шт", "Продажи в месяц, шт",
+          "Можем отдать, шт", "Останется у нас, шт", "Нам хватит на, мес",
+          "Цена, руб", "Сумма, руб", "Прибыль, руб"]
+INSIDE_WIDTHS = [5, 76, 12, 12, 15, 14, 15, 14, 11, 14, 14]
 
 
 def read_net(path):
@@ -99,7 +105,7 @@ def build(order, report, keep):
     ]
     base["В пути, шт"] = incoming(base)
 
-    offer, ask = [], []
+    offer, ask, inside = [], [], []
     for _, item in base.iterrows():
         rest, coming = item["Остаток, шт"], item["В пути, шт"]
         monthly, price = item["Продажи в месяц, шт"], item["Продажная цена, руб"]
@@ -109,6 +115,16 @@ def build(order, report, keep):
         if give:
             offer.append([len(offer) + 1, item["Наименование"], give, price,
                           round(price * give)])
+            left = rest - give
+            if monthly:
+                _, months, _ = run_out(left + coming, monthly)
+                months = round(months, 1)
+            else:
+                months = ""
+            inside.append([len(inside) + 1, item["Наименование"], int(rest),
+                           int(coming), int(monthly), give, int(left), months,
+                           price, round(price * give),
+                           round((price - item["Себестоимость, руб"]) * give)])
         want = int(item["Просит, шт"])
         net = item["Выручка на штуку, руб"]
         if want and pd.notna(net):
@@ -116,7 +132,8 @@ def build(order, report, keep):
                         round(price * want), net, round(net * want),
                         round((net - price) * want)])
     return (pd.DataFrame(offer, columns=OFFER),
-            pd.DataFrame(ask, columns=ORDER))
+            pd.DataFrame(ask, columns=ORDER),
+            pd.DataFrame(inside, columns=INSIDE))
 
 
 def write(book, title, columns, rows, widths, total, money, price, note=None):
@@ -148,9 +165,10 @@ def write(book, title, columns, rows, widths, total, money, price, note=None):
 PATHS = {}
 
 
-def main(source, sales_path, container_path, keep, target, list_only=False):
+def main(source, sales_path, container_path, keep, target, list_only=False,
+         everything=False):
     PATHS["container"] = container_path
-    offer, ask = build(read_order(source), read_net(sales_path), keep)
+    offer, ask, inside = build(read_order(source, everything), read_net(sales_path), keep)
     offer = offer.sort_values("Сумма, руб", ascending=False)
     ask = ask.sort_values("Разница по выручке, руб", ascending=False)
     offer["№"] = range(1, len(offer) + 1)
@@ -161,6 +179,17 @@ def main(source, sales_path, container_path, keep, target, list_only=False):
     write(book, "ЧТО МОЖЕМ ОТГРУЗИТЬ", OFFER, offer.values.tolist(), OFFER_WIDTHS,
           ["", "ИТОГО", int(offer["Количество, шт"].sum()), "",
            int(offer["Сумма, руб"].sum())], "CE", "D")
+    if everything:
+        inside = inside.sort_values("Сумма, руб", ascending=False)
+        inside["№"] = range(1, len(inside) + 1)
+        write(book, "ЧТО ОСТАНЕТСЯ У НАС", INSIDE, inside.values.tolist(),
+              INSIDE_WIDTHS,
+              ["", "ИТОГО", int(inside["Остаток, шт"].sum()),
+               int(inside["В пути, шт"].sum()), int(inside["Продажи в месяц, шт"].sum()),
+               int(inside["Можем отдать, шт"].sum()),
+               int(inside["Останется у нас, шт"].sum()), "", "",
+               int(inside["Сумма, руб"].sum()), int(inside["Прибыль, руб"].sum())],
+              "CDEFGJK", "I")
     if not list_only:
         write(book, "ВАША ЗАЯВКА", ORDER, ask.values.tolist(), ORDER_WIDTHS,
                ["", "ИТОГО", int(ask["Количество, шт"].sum()), "",
@@ -194,5 +223,8 @@ if __name__ == "__main__":
     parser.add_argument("--out", default=TARGET)
     parser.add_argument("--list-only", action="store_true",
                         help="только список товаров, без сравнения с маркетплейсом")
+    parser.add_argument("--all", action="store_true", dest="everything",
+                        help="весь склад, а не только позиции из заявки покупателя")
     args = parser.parse_args()
-    main(args.source, args.sales, args.container, args.keep, args.out, args.list_only)
+    main(args.source, args.sales, args.container, args.keep, args.out,
+         args.list_only, args.everything)
