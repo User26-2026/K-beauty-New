@@ -167,6 +167,73 @@ def collect(stock_path, container_path):
     return pd.concat([stock, pd.DataFrame(extra)], ignore_index=True)
 
 
+# Одна и та же тональная пишется как "#13" и как "13 тон", а название
+# идет то с приставкой Premium, то без нее и с русским хвостом.
+NOISE = {"PREMIUM", "THE", "AND", "FOR", "NEW", "ML", "G", "GR", "EA", "PCS"}
+TONE = re.compile(r"#\s*(\d{1,3})|\b(\d{1,3})\s*тон", re.IGNORECASE)
+
+
+def tone_of(name):
+    found = TONE.search(str(name))
+    return next((part for part in found.groups() if part), "") if found else ""
+
+
+def key_words(name):
+    """Значимые латинские слова названия без тона, фасовки и приставок."""
+    text = re.sub(r"\((\d)\)?\s*in\s*(\d)", r"\1in\2", str(name), flags=re.I)
+    text = re.sub(r"(\d)\s*in\s*(\d)", r"\1in\2", text, flags=re.I)
+    text = re.sub(r"\[[^\]]*\]", " ", text)          # фасовка в скобках
+    text = text.split("/")[0]                       # русский хвост
+    parts = re.split(r"[^A-Za-z0-9]+", text.upper())
+    skip = {tone_of(name)}
+    return {part for part in parts
+            if part and part not in NOISE and part not in skip
+            and not re.fullmatch(r"\d+(ML|G|GR|EA|PCS)?", part)}
+
+
+def same_item(one, two):
+    """Один и тот же товар: совпал тон и совпал набор слов.
+
+    Вложенности набора мало: "collagen moisture foundation" входит в
+    "collagen whitening moisture foundation", а это разные тональные.
+    """
+    if tone_of(one) != tone_of(two):
+        return False
+    left, right = key_words(one), key_words(two)
+    return bool(left) and left == right
+
+
+def read_needs(path):
+    """Заявка покупателя: название, потребность в месяц, проходная цена.
+
+    Строки без количества — заголовки разделов («Пудра:»), их пропускаем.
+    """
+    table = pd.read_excel(path, sheet_name=0, header=None).iloc[2:]
+    table = table[[0, 1]]
+    table.columns = ["Товар", "Нужно в месяц, шт"]
+    table = table[table["Товар"].notna()]
+    table["Нужно в месяц, шт"] = pd.to_numeric(table["Нужно в месяц, шт"],
+                                               errors="coerce")
+    table = table.dropna(subset=["Нужно в месяц, шт"])
+    table["Товар"] = table["Товар"].astype(str).str.strip()
+    table["Бренд"] = table["Товар"].map(brand_of)
+    return table.reset_index(drop=True)
+
+
+def add_needs(table, needs):
+    """Позиции из заявки покупателя, которых у нас еще нет."""
+    rows = []
+    for _, item in needs.iterrows():
+        brand = item["Бренд"]
+        same = table[table["Бренд"] == brand]["Товар"]
+        if any(same_item(item["Товар"], other) for other in same):
+            continue
+        rows.append({"Товар": item["Товар"], "Остаток, шт": 0.0, "Штрихкод": "",
+                     "Бренд": brand, "Едет, шт": 0.0})
+    print(f"Из заявки покупателя добавлено: {len(rows)} из {len(needs)} позиций")
+    return pd.concat([table, pd.DataFrame(rows)], ignore_index=True) if rows else table
+
+
 def add_positions(table):
     """Дописываем позиции из списка.
 
@@ -247,8 +314,10 @@ def barcodes(table):
     return filled
 
 
-def main(stock_path, container_path, sales_path, target, brands):
+def main(stock_path, container_path, sales_path, target, brands, needs_path):
     table = add_positions(collect(stock_path, container_path))
+    if needs_path:
+        table = add_needs(table, read_needs(needs_path))
     if brands:
         table = add_brands(table, brands)
     table["Количество, шт"] = quantities(table, sales_path)
@@ -321,5 +390,6 @@ if __name__ == "__main__":
     parser.add_argument("--out", default=TARGET)
     parser.add_argument("--brand", action="append", default=[],
                         help="добавить весь каталог бренда из прайсов")
+    parser.add_argument("--needs", help="заявка покупателя с его позициями")
     args = parser.parse_args()
-    main(args.source, args.container, args.sales, args.out, args.brand)
+    main(args.source, args.container, args.sales, args.out, args.brand, args.needs)
