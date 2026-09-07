@@ -22,8 +22,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from stock_forecast import (HEAD, LATER, NONE_, PLAN, REST_COLUMN, SHOWN_MONTHS,
-                            SOON, TOTAL, WHITE, run_out)
+from stock_forecast import (HEAD, LATER, MONTHS, NONE_, PLAN, REST_COLUMN, SEASON,
+                            SHOWN_MONTHS, SOON, START, TOTAL, WHITE, run_out)
 
 TARGET = "outputs/Продажи и остатки.xlsx"
 # Колонки отчета WB: артикул, название, остатки FBO и FBS, продажи.
@@ -64,6 +64,53 @@ def forecast(table):
         rows.append(head + spent + [int(max(rest - sum(spent), 0)), until,
                                     round(months, 1)])
     return pd.DataFrame(rows, columns=SHOWN)
+
+
+def demand(table):
+    """Спрос по месяцам против того, что реально сможем отгрузить.
+
+    Спрос — это продажи августа с сезонным коэффициентом, без оглядки на
+    склад. Отгрузка ограничена остатком: когда позиция кончилась, дальше
+    она не продается, и разрыв между двумя строками — упущенные продажи.
+    """
+    left = dict(zip(table.index, table["Остаток, шт"]))
+    base = dict(zip(table.index, table["Продано за месяц, шт"]))
+    year, month, rows = *START, []
+    for _ in range(SHOWN_MONTHS):
+        rate = SEASON.get(month, 1.0)
+        need = sum(base[key] * rate for key in left)
+        sell = sum(min(left[key], base[key] * rate) for key in left)
+        for key in left:
+            left[key] = max(0.0, left[key] - base[key] * rate)
+        rows.append([f"{MONTHS[month - 1].capitalize()} {year}",
+                     f"х{rate:g}".replace(".", ","), round(need), round(sell),
+                     round(need - sell)])
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    rows.append(["ИТОГО", "", sum(row[2] for row in rows),
+                 sum(row[3] for row in rows), sum(row[4] for row in rows)])
+    return rows
+
+
+def write_demand(book, rows):
+    ws = book.create_sheet("СПРОС ПРОТИВ ОТГРУЗКИ")
+    ws.append(["Месяц", "Сезон", "Спрос, шт", "Отгрузим, шт", "Не хватит, шт"])
+    for cell in ws[1]:
+        cell.fill, cell.font = HEAD, WHITE
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+    for row in rows:
+        ws.append(row)
+        if row[4] > 0:
+            for cell in ws[ws.max_row][2:]:
+                cell.fill = SOON if row[4] > row[3] else LATER
+    for cell in ws[ws.max_row]:
+        cell.fill, cell.font = TOTAL, Font(bold=True)
+    for index, width in enumerate([18, 9, 13, 14, 15], start=1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    for letter in "CDE":
+        for cell in ws[letter][1:]:
+            cell.number_format = "# ##0"
+    ws.freeze_panes = "A2"
+    return ws
 
 
 def write(book, title, rows, total=None):
@@ -111,6 +158,7 @@ def main(sales_path, target):
 
     скоро = order[[value != "" and value <= SHOWN_MONTHS
                    for value in order["Запас, месяцев"]]]
+    write_demand(book, demand(live))
     write(book, "КОНЧИТСЯ ДО МАЯ", скоро.values.tolist())
     write(book, "НЕТ ПРОДАЖ",
           order[order["Хватит до"] == "нет продаж"].values.tolist())
@@ -131,6 +179,9 @@ def main(sales_path, target):
           f"закончилось: {(table['Хватит до'] == 'закончился').sum()}")
     if len(known):
         print(f"Медиана запаса: {known['Запас, месяцев'].median():.1f} мес")
+    plan = demand(live)[-1]
+    print(f"Спрос до апреля: {plan[2]:,} шт   отгрузим {plan[3]:,} шт   "
+          f"упустим {plan[4]:,} шт".replace(",", " "))
     print(f"Сохранено: {target}")
 
 
