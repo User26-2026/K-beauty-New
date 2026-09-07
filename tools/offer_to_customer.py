@@ -148,7 +148,7 @@ def write(book, title, columns, rows, widths, total, money, price, note=None):
 PATHS = {}
 
 
-def main(source, sales_path, container_path, keep, target):
+def main(source, sales_path, container_path, keep, target, list_only=False):
     PATHS["container"] = container_path
     offer, ask = build(read_order(source), read_net(sales_path), keep)
     offer = offer.sort_values("Сумма, руб", ascending=False)
@@ -161,17 +161,21 @@ def main(source, sales_path, container_path, keep, target):
     write(book, "ЧТО МОЖЕМ ОТГРУЗИТЬ", OFFER, offer.values.tolist(), OFFER_WIDTHS,
           ["", "ИТОГО", int(offer["Количество, шт"].sum()), "",
            int(offer["Сумма, руб"].sum())], "CE", "D")
-    write(book, "ВАША ЗАЯВКА", ORDER, ask.values.tolist(), ORDER_WIDTHS,
-          ["", "ИТОГО", int(ask["Количество, шт"].sum()), "",
-           int(ask["Сумма для вас, руб"].sum()), "",
-           int(ask["Она же на это количество, руб"].sum()),
-           int(ask["Разница по выручке, руб"].sum())], "CEGH", "DF", NOTE)
+    if not list_only:
+        write(book, "ВАША ЗАЯВКА", ORDER, ask.values.tolist(), ORDER_WIDTHS,
+               ["", "ИТОГО", int(ask["Количество, шт"].sum()), "",
+                int(ask["Сумма для вас, руб"].sum()), "",
+                int(ask["Она же на это количество, руб"].sum()),
+                int(ask["Разница по выручке, руб"].sum())], "CEGH", "DF", NOTE)
 
     os.makedirs("outputs", exist_ok=True)
     book.save(target)
     print(f"Можем отгрузить: {len(offer)} позиций, "
           f"{int(offer['Количество, шт'].sum()):,} шт на "
           f"{int(offer['Сумма, руб'].sum()):,} руб".replace(",", " "))
+    print(f"Сохранено: {target}")
+    if list_only:
+        return
     print(f"Его заявка: {len(ask)} позиций, {int(ask['Количество, шт'].sum()):,} шт")
     print(f"  по нашим ценам:   {int(ask['Сумма для вас, руб'].sum()):,} руб"
           .replace(",", " "))
@@ -179,7 +183,6 @@ def main(source, sales_path, container_path, keep, target):
           .replace(",", " "))
     print(f"  разница:          "
           f"{int(ask['Разница по выручке, руб'].sum()):,} руб".replace(",", " "))
-    print(f"Сохранено: {target}")
 
 
 if __name__ == "__main__":
@@ -189,5 +192,7 @@ if __name__ == "__main__":
     parser.add_argument("--container", required=True)
     parser.add_argument("--keep", type=int, default=12)
     parser.add_argument("--out", default=TARGET)
+    parser.add_argument("--list-only", action="store_true",
+                        help="только список товаров, без сравнения с маркетплейсом")
     args = parser.parse_args()
-    main(args.source, args.sales, args.container, args.keep, args.out)
+    main(args.source, args.sales, args.container, args.keep, args.out, args.list_only)
