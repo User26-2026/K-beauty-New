@@ -30,7 +30,7 @@ import brand_names
 from brand_names import brand_of
 from check_customer_order import read_order
 from compare_offers import read_any
-from offer_to_customer import SCORE, kind
+from offer_to_customer import SCORE, kind, same_volume
 from rates import KRW_RUB
 
 TARGET = "outputs/Склад против Кореи.xlsx"
@@ -88,7 +88,9 @@ def cheapest(name, brand, offers, cost, delivery):
     for mark in (brand, brand.split()[0] if brand.split() else brand):
         fits = [(score, index) for score, index in
                 add_barcodes.candidates(name, mark, offers)
-                if score >= SCORE and kind(name) == kind(offers.at[index, "Товар"])]
+                if score >= SCORE
+                and kind(name) == kind(offers.at[index, "Товар"])
+                and same_volume(name, offers.at[index, "Товар"])]
         if fits:
             break
     if not fits:

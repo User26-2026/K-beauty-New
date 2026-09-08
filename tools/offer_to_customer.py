@@ -162,6 +162,26 @@ def kind(name):
             if word in KIND}
 
 
+def volume_of(name):
+    """Объем из названия в миллилитрах или граммах, число к числу.
+
+    Без него 20 мл сводится со 150 мл того же тонера, и цена пробника
+    подставляется вместо цены банки.
+    """
+    found = VOLUME.findall(str(name))
+    if not found:
+        return None
+    value, unit = found[0]
+    value = float(value.replace(",", "."))
+    return round(value * 1000) if unit.lower() in ("kg", "кг", "l", "л") else round(value)
+
+
+def same_volume(one, two):
+    """Объемы не противоречат друг другу: где он указан у обоих — совпал."""
+    left, right = volume_of(one), volume_of(two)
+    return left is None or right is None or left == right
+
+
 def weight_of(name):
     """Вес брутто одной штуки в килограммах, оценка по объему."""
     found = VOLUME.search(str(name))
