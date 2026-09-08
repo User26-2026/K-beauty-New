@@ -19,8 +19,10 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from add_sales_price import sales_by_stock
 from brand_names import brand_of
 from check_customer_order import read_order
+from wholesale_vs_wb import MARGIN, SKIP
 
 TARGET = "outputs/Заказ покупателя по брендам.xlsx"
 
@@ -30,18 +32,44 @@ TOTAL = PatternFill("solid", fgColor="E2EFDA")
 WHITE = Font(color="FFFFFF", bold=True)
 
 BRANDS = ["Бренд", "Позиций", "Просит, шт", "Сумма, руб", "Доля в заказе, %",
-          "Средняя цена, руб", "Самая крупная позиция"]
+          "Прибыль оптом, руб", "Прибыль на WB, руб", "Разница, руб",
+          "Во сколько раз WB выгоднее", "Сверено с WB, поз.",
+          "Самая крупная позиция"]
 ITEMS = ["№", "Бренд", "Наименование", "Просит, шт", "Остаток, шт", "Цена, руб",
-         "Сумма, руб", "Доля в заказе, %"]
+         "Сумма, руб", "Доля в заказе, %", "Прибыль оптом, руб",
+         "Прибыль на WB, руб", "Разница, руб"]
 
 
-def build(path):
+def read_margin(path):
+    """Фактическая прибыль WB по карточкам за месяц."""
+    table = pd.read_excel(path, sheet_name=0, header=None).iloc[SKIP:]
+    table = table[list(MARGIN)].rename(columns=MARGIN)
+    table = table[table["Товар"].notna()]
+    for column in ("Продано, шт", "Маржа, руб"):
+        table[column] = pd.to_numeric(table[column], errors="coerce").fillna(0)
+    return table.rename(columns={"Маржа, руб": "Выручка, руб"}).reset_index(drop=True)
+
+
+def build(path, sales_path):
     order = read_order(path)
     order["Бренд"] = order["Наименование"].map(brand_of)
+    # В колонке «С/с» лежит цена с наценкой 10%, себестоимость получаем делением.
     order["Цена, руб"] = order["Себестоимость, руб"].round()
     order["Сумма, руб"] = (order["Цена, руб"] * order["Просит, шт"]).round()
     order["Доля в заказе, %"] = (order["Сумма, руб"]
                                 / order["Сумма, руб"].sum() * 100).round(2)
+    order["Прибыль оптом, руб"] = (
+        (order["Цена, руб"] - order["Себестоимость, руб"] / 1.1)
+        * order["Просит, шт"]).round()
+
+    found = sales_by_stock(order, read_margin(sales_path))
+    order["Прибыль на WB, руб"] = [
+        round(margin / sold * want) if sold else None
+        for margin, sold, want in zip(found["Выручка, руб"], found["Продано, шт"],
+                                      order["Просит, шт"])]
+    order["Разница, руб"] = [
+        round(wb - opt) if pd.notna(wb) else None
+        for wb, opt in zip(order["Прибыль на WB, руб"], order["Прибыль оптом, руб"])]
     return order
 
 
@@ -55,21 +83,33 @@ def write_brands(book, order):
     rows = []
     for brand, part in order.groupby("Бренд"):
         top = part.loc[part["Сумма, руб"].idxmax()]
+        known = part[part["Прибыль на WB, руб"].notna()]
+        # Прибыль оптом берем по тем же позициям, что сверились с WB,
+        # иначе сравниваются разные наборы товара.
+        opt = known["Прибыль оптом, руб"].sum()
+        wb = known["Прибыль на WB, руб"].sum()
         rows.append([brand, len(part), int(part["Просит, шт"].sum()),
                      int(part["Сумма, руб"].sum()),
                      round(part["Сумма, руб"].sum() / total * 100, 1),
-                     round(part["Сумма, руб"].sum() / part["Просит, шт"].sum()),
+                     int(opt), int(wb), int(wb - opt),
+                     round(wb / opt, 1) if opt > 0 else "", len(known),
                      f"{top['Наименование'][:44]} — {int(top['Сумма, руб']):,} руб"
                      .replace(",", " ")])
     for row in sorted(rows, key=lambda row: -row[3]):
         ws.append(row)
-    ws.append(["ВСЕГО", len(order), int(order["Просит, шт"].sum()),
-               int(total), 100.0, round(total / order["Просит, шт"].sum()), ""])
+    known = order[order["Прибыль на WB, руб"].notna()]
+    ws.append(["ВСЕГО", len(order), int(order["Просит, шт"].sum()), int(total), 100.0,
+               int(known["Прибыль оптом, руб"].sum()),
+               int(known["Прибыль на WB, руб"].sum()),
+               int(known["Разница, руб"].sum()),
+               round(known["Прибыль на WB, руб"].sum()
+                     / known["Прибыль оптом, руб"].sum(), 1), len(known), ""])
     for cell in ws[ws.max_row]:
         cell.fill, cell.font = TOTAL, Font(bold=True)
-    for index, width in enumerate([18, 10, 13, 15, 16, 16, 62], start=1):
+    for index, width in enumerate([18, 10, 13, 15, 16, 16, 16, 15, 16, 15, 58],
+                                  start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
-    for letter in "BCDF":
+    for letter in "BCDFGHJ":
         for cell in ws[letter][1:]:
             cell.number_format = "# ##0"
     # Полоски по доле: сразу видно, где сидят деньги.
@@ -99,23 +139,32 @@ def write_items(book, order):
         ws.append([number, item["Бренд"], item["Наименование"],
                    int(item["Просит, шт"]), int(item["Остаток, шт"]),
                    item["Цена, руб"], int(item["Сумма, руб"]),
-                   item["Доля в заказе, %"]])
+                   item["Доля в заказе, %"], int(item["Прибыль оптом, руб"]),
+                   int(item["Прибыль на WB, руб"])
+                   if pd.notna(item["Прибыль на WB, руб"]) else "",
+                   int(item["Разница, руб"])
+                   if pd.notna(item["Разница, руб"]) else ""])
+    known = order[order["Прибыль на WB, руб"].notna()]
     ws.append([None, "ИТОГО", f"позиций: {len(order)}",
                int(order["Просит, шт"].sum()), "", "",
-               int(order["Сумма, руб"].sum()), 100.0])
+               int(order["Сумма, руб"].sum()), 100.0,
+               int(known["Прибыль оптом, руб"].sum()),
+               int(known["Прибыль на WB, руб"].sum()),
+               int(known["Разница, руб"].sum())])
     for cell in ws[ws.max_row]:
         cell.fill, cell.font = TOTAL, Font(bold=True)
-    for index, width in enumerate([5, 16, 66, 12, 12, 12, 14, 15], start=1):
+    for index, width in enumerate([5, 16, 60, 12, 12, 12, 14, 15, 16, 16, 14],
+                                  start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
-    for letter in "DEFG":
+    for letter in "DEFGIJK":
         for cell in ws[letter][1:]:
             cell.number_format = "# ##0"
     ws.freeze_panes = "C2"
     return ws
 
 
-def main(source, target):
-    order = build(source)
+def main(source, sales_path, target):
+    order = build(source, sales_path)
     book = Workbook()
     book.remove(book.active)
     write_brands(book, order)
@@ -137,6 +186,7 @@ def main(source, target):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Заказ покупателя по брендам")
     parser.add_argument("source")
+    parser.add_argument("--sales", default="data/sales/wb_sales_2026-08.xls")
     parser.add_argument("--out", default=TARGET)
     args = parser.parse_args()
-    main(args.source, args.out)
+    main(args.source, args.sales, args.out)
