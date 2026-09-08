@@ -46,9 +46,12 @@ GOOD = PatternFill("solid", fgColor="E2EFDA")
 BAD = PatternFill("solid", fgColor="FCE4D6")
 WHITE = Font(color="FFFFFF", bold=True)
 
+# Сравниваем не корейскую цену с нашей, а цену на нашем складе: в Корее
+# почти все дешевле, вопрос в том, что останется после доставки.
 SHOWN = ["№", "Бренд", "Наименование", "Остаток, шт", "Наша себестоимость, руб",
-         "Цена в Корее, KRW", "Цена EXW, руб", "С доставкой, руб", "У кого",
-         "Разница, руб", "Разница, %", "Разница на остаток, руб"]
+         "Цена в Корее, KRW", "Цена в Корее, руб", "Итого у нас на складе, руб",
+         "У кого", "Разница с доставкой, руб", "Разница с доставкой, %",
+         "Разница на остаток, руб"]
 WIDTHS = [5, 16, 58, 12, 18, 15, 13, 15, 16, 12, 11, 18]
 
 
@@ -161,7 +164,7 @@ def main(source, offers_list, delivery, target):
     stock = read_order(source, everything=True)
     table = build(stock, korean(offers_list), delivery)
     table = table.sort_values(["Бренд", "Наименование"])
-    known = table[table["Разница, %"] != ""]
+    known = table[table["Разница с доставкой, %"] != ""]
 
     book = Workbook()
     book.remove(book.active)
@@ -170,14 +173,15 @@ def main(source, offers_list, delivery, target):
            "", "", "", "", "", "", "",
            int(pd.to_numeric(table["Разница на остаток, руб"],
                              errors="coerce").sum())])
-    дешевле = known[known["Разница, %"] < 0].sort_values("Разница, %")
-    write(book, "В КОРЕЕ ДЕШЕВЛЕ", дешевле.values.tolist(),
+    дешевле = known[known["Разница с доставкой, %"] < 0].sort_values(
+        ["Бренд", "Разница с доставкой, %"])
+    write(book, "ВЫГОДНО ВЕЗТИ", дешевле.values.tolist(),
           ["", "ИТОГО", f"позиций: {len(дешевле)}",
            int(дешевле["Остаток, шт"].sum()), "", "", "", "", "", "", "",
            int(дешевле["Разница на остаток, руб"].sum())])
-    дороже = known[known["Разница, %"] > 0].sort_values("Разница, %",
-                                                        ascending=False)
-    write(book, "В КОРЕЕ ДОРОЖЕ", дороже.values.tolist(),
+    дороже = known[known["Разница с доставкой, %"] > 0].sort_values(
+        ["Бренд", "Разница с доставкой, %"], ascending=[True, False])
+    write(book, "НЕВЫГОДНО ВЕЗТИ", дороже.values.tolist(),
           ["", "ИТОГО", f"позиций: {len(дороже)}", int(дороже["Остаток, шт"].sum()),
            "", "", "", "", "", "", "",
            int(дороже["Разница на остаток, руб"].sum())])
@@ -185,8 +189,8 @@ def main(source, offers_list, delivery, target):
     os.makedirs("outputs", exist_ok=True)
     book.save(target)
     print(f"Позиций: {len(table)}   сверено с Кореей: {len(known)}")
-    print(f"Дешевле в Корее: {len(дешевле)}   дороже: {len(дороже)}")
-    print(f"Медиана разницы: {known['Разница, %'].median():.1f}%")
+    print(f"Выгодно везти: {len(дешевле)}   невыгодно: {len(дороже)}")
+    print(f"Медиана разницы: {known['Разница с доставкой, %'].median():.1f}%")
     print(f"На весь остаток: "
           f"{int(known['Разница на остаток, руб'].sum()):,} руб".replace(",", " "))
     print(f"Сохранено: {target}")
