@@ -89,6 +89,13 @@ KG = ["№", "Наименование", "Наша себестоимость, �
       "Поставщик", "Вес, кг", "Доставка, руб", "Итого из Киргизии, руб",
       "Разница, руб", "Разница, %", "Замечание"]
 KG_WIDTHS = [5, 58, 16, 16, 16, 10, 12, 16, 13, 12, 24]
+NO_KG = ["№", "Наименование", "Остаток, шт", "Наша себестоимость, руб", "Почему"]
+NO_KG_WIDTHS = [5, 74, 12, 18, 44]
+# Продать покупателю и откупить в Киргизии: сходится ли это в деньгах.
+BACK = ["№", "Наименование", "Просит, шт", "Наша цена, руб", "Цена в Киргизии, руб",
+        "Поставщик", "Вес, кг", "Доставка, руб", "Откупим по, руб",
+        "Разница на штуку, руб", "Разница на партию, руб", "Вывод"]
+BACK_WIDTHS = [5, 52, 12, 13, 16, 15, 9, 12, 14, 15, 17, 26]
 # Веса в прайсах нет, берем объем из названия: миллилитр считаем за грамм.
 VOLUME = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ml|мл|g|гр|г|kg|кг)\b", re.IGNORECASE)
 PACKING = 1.4        # упаковка и коробка сверх веса самого средства
@@ -176,10 +183,19 @@ def kyrgyz_prices():
 
 
 def cheapest_kg(name, brand, prices):
-    """Самое дешевое предложение Киргизии по позиции, если оно надежное."""
-    fits = [(score, index) for score, index in
-            add_barcodes.candidates(name, brand, prices)
-            if score >= SCORE and kind(name) == kind(prices.at[index, "Название EN"])]
+    """Самое дешевое предложение Киргизии по позиции, если оно надежное.
+
+    Бренд пробуем и целиком, и первым словом: у нас он приведен к
+    VT COSMETICS, а в киргизских прайсах записан просто VT.
+    """
+    fits = []
+    for mark in (brand, brand.split()[0] if brand.split() else brand):
+        fits = [(score, index) for score, index in
+                add_barcodes.candidates(name, mark, prices)
+                if score >= SCORE
+                and kind(name) == kind(prices.at[index, "Название EN"])]
+        if fits:
+            break
     if not fits:
         return None
     return min(fits, key=lambda pair: prices.at[pair[1], "Цена, руб"])[1]
@@ -402,12 +418,23 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
               "CDEFGJK", "I", name_at=1)
     if kg_delivery is not None:
         prices = kyrgyz_prices()
-        rows = []
+        brands = set(prices["Марка"])
+        rows, missing, back = [], [], []
         for _, item in read_order(source, True).iterrows():
             cost = item["Себестоимость, руб"] / 1.1
-            found = cheapest_kg(item["Наименование"],
-                                brand_of(item["Наименование"]), prices)
+            brand = brand_of(item["Наименование"])
+            found = cheapest_kg(item["Наименование"], brand, prices)
             if found is None:
+                # Разводим две причины: бренда у них нет совсем или бренд
+                # есть, а этой позиции в его линейке нет.
+                mark = re.sub(r"[^A-Z0-9]", "", brand.upper())
+                known = any(other.startswith(mark[:4]) or mark.startswith(other)
+                            for other in brands if len(other) >= 2)
+                missing.append([len(missing) + 1, item["Наименование"],
+                                int(item["Остаток, шт"]), round(cost),
+                                f"бренд {brand} есть, но этой позиции нет"
+                                if known else
+                                f"бренда {brand} нет ни у одного из трех"])
                 continue
             price = prices.at[found, "Цена, руб"]
             weight, guessed = weight_of(item["Наименование"])
@@ -416,6 +443,18 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
             gap = round(total / cost * 100 - 100, 1)
             # Разрыв в разы — это не цена, а разная фасовка: пробник из
             # десяти пэдов против банки на шестьдесят.
+            want = int(item["Просит, шт"])
+            if want:
+                # Продаем по своей цене, а потом откупаем у них: сходится
+                # ли это в деньгах на его количестве.
+                ours = round(item["Себестоимость, руб"])
+                gain = ours - total
+                back.append([len(back) + 1, item["Наименование"], want, ours,
+                             price, prices.at[found, "Поставщик"], weight,
+                             delivery, round(total), round(gain),
+                             round(gain * want),
+                             "выгодно: откупим дешевле" if gain > 0
+                             else "невыгодно: откуп дороже продажи"])
             notes = ["вес не из названия"] if guessed else []
             if gap > 200:
                 notes.append("сверить фасовку")
@@ -423,6 +462,21 @@ def main(source, sales_path, container_path, keep, target, list_only=False,
                          prices.at[found, "Поставщик"], weight, delivery,
                          round(total), round(total - cost), gap, ", ".join(notes)])
         kg_table = pd.DataFrame(rows, columns=KG).sort_values("Разница, %")
+        if back:
+            table = pd.DataFrame(back, columns=BACK).sort_values(
+                "Разница на партию, руб", ascending=False)
+            table["№"] = range(1, len(table) + 1)
+            write(book, "ПРОДАТЬ И ОТКУПИТЬ В КИРГИЗИИ", BACK,
+                  table.values.tolist(), BACK_WIDTHS,
+                  ["", "ИТОГО", int(table["Просит, шт"].sum()), "", "", "", "", "",
+                   "", "", int(table["Разница на партию, руб"].sum()), ""],
+                  "CDEHIJK", "G", name_at=1)
+            print(f"Продать и откупить: {len(table)} позиций, итог "
+                  f"{int(table['Разница на партию, руб'].sum()):,} руб"
+                  .replace(",", " "))
+        write(book, "НЕ С ЧЕМ СРАВНИТЬ", NO_KG, missing, NO_KG_WIDTHS,
+              ["", "ИТОГО", int(sum(row[2] for row in missing)), "",
+               f"позиций: {len(missing)}"], "C", "D", name_at=1)
         kg_table["№"] = range(1, len(kg_table) + 1)
         write(book, "ЦЕНЫ В КИРГИЗИИ", KG, kg_table.values.tolist(), KG_WIDTHS,
               ["", "ИТОГО", "", "", f"позиций: {len(kg_table)}", "", "", "", "",
