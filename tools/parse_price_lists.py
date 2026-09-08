@@ -48,6 +48,7 @@ SUPPLIERS = {
     "safiya": ("SAFIYA", "RU", "USD"),
     "aibeauty": ("Aibeauty", "KG", "USD"),
     "koreaglobal": ("Korea Global", "KG", "USD"),
+    "holikorea": ("Holi Korea", "KG", "USD"),
 }
 
 
@@ -117,6 +118,8 @@ COLUMN_PATTERNS = {
         r"unit\s*price", r"^price\s*\(\s*-?\s*vat",
         # Оптовики РФ и КГ: берем цену самого крупного опта, это их нижний предел.
         r"опт\s*от\s*300", r"от\s*300\s*т\.?\s*р", r"^цена$", r"^цена,\s*\$$",
+        # Holi Korea подписывает единственную колонку цены просто валютой.
+        r"^usd$",
     ],
     "qty_per_box": [
         r"q'?ty\s*/?\s*box", r"qty\s*per\s*outbox", r"1\s*box\s*qty", r"ea\s*/\s*box",
