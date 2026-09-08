@@ -43,8 +43,12 @@ def read_reply(path):
     parts = []
     for sheet in pd.ExcelFile(path).sheet_names:
         table = pd.read_excel(path, sheet_name=sheet, header=0)
-        if "Цена, KRW" not in table:
+        # Поставщик дописывает в шапку свой перевод: «Цена, KRW\n(공급가격)».
+        column = next((name for name in table.columns
+                       if str(name).startswith("Цена, KRW")), None)
+        if column is None:
             continue
+        table = table.rename(columns={column: "Цена, KRW"})
         table = table[table["Цена, KRW"].notna()]
         if table.empty:
             continue
