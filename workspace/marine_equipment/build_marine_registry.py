@@ -52,11 +52,22 @@ CONTACTORS = {
 }
 
 COLUMNS = [
-    "Локация", "Товарная группа", "Подгруппа", "Группа в файле", "Наименование",
+    "Локация", "Товарная группа", "Подгруппа", "Группа в файле",
+    "Оборудование", "Наименование",
     "Чертеж", "Кол-во по учету", "Наличие",
     "Цена за ед., руб", "Сумма, руб", "Состояние", "Комплектность",
     "Происхождение", "Примечание",
 ]
+
+# В разделе ЗИП подзаголовками идут модели оборудования: под ними лежат
+# запчасти к этой модели. Без них запчасть теряет привязку — «Фильтр»
+# без указания, что он к двигателю ЭТФ-3, продать невозможно.
+EQUIPMENT_MODELS = (
+    "цвс 10/40", "цвс 4/40", "нцкг", "1эцну", "нцв 100/30", "нцв 40/80",
+    "нцв160/80", "нцв 160/80", "нцв 40/20", "нцв 63/20", "нцвс 63/20",
+    "нцвс 40/20", "8nvd48a2u", "3д12", "6чн25/34", "экп 70/25",
+    "двигатель этф-3", "двигатель д1.м",
+)
 
 # строки-заголовки разделов внутри файлов
 GROUP_MARKERS = (
@@ -154,6 +165,8 @@ def is_group_header(row, spec):
         if num(cell(row, spec[key])):
             return False
     low = cell(row, spec["name"]).lower()
+    if any(low.startswith(m) for m in EQUIPMENT_MODELS):
+        return True
     return any(low.startswith(m) or m in low for m in GROUP_MARKERS)
 
 
@@ -189,7 +202,7 @@ def parse(spec):
     path = SRC / spec["file"]
     rows = read_rows(path)
     lo, hi = CONTACTORS.get(spec["file"], (-1, -1))
-    out, group = [], ""
+    out, group, model = [], "", ""
 
     for i in range(spec["start"], len(rows)):
         row = rows[i]
@@ -205,7 +218,10 @@ def parse(spec):
             if not name:
                 continue
             if is_group_header(row, spec):
-                group = name
+                if any(name.lower().startswith(m) for m in EQUIPMENT_MODELS):
+                    model = name
+                else:
+                    group, model = name, ""
                 continue
             qty = num(cell(row, spec["qty"]))
             stock = num(cell(row, spec["stock"]))
@@ -221,6 +237,7 @@ def parse(spec):
             "Товарная группа": cat,
             "Подгруппа": sub,
             "Группа в файле": group,
+            "Оборудование": model,
             "Наименование": name,
             "Чертеж": cell(row, spec["draw"]),
             "Кол-во по учету": qty,
