@@ -25,6 +25,10 @@ OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipmen
 
 # позиция дороже этого порога получает отдельное объявление
 SOLO_THRESHOLD = 100_000
+
+# позиции с противоречиями в учете: публикуем только после проверки наличия
+DISPUTED = ("ртнд-150", "иллюминатор круглый в сборе ф300мм створчатый",
+            "сундук")
 TITLE_LIMIT = 50
 
 COLUMNS = [
@@ -75,11 +79,17 @@ def solo_ad(r):
     parts.append("Самовывоз или отправка транспортной компанией по России.")
     parts.append("Есть другое судовое оборудование, пришлем перечень.")
 
+    low = name.lower()
+    disputed = any(d in low for d in DISPUTED)
+    if disputed:
+        parts.insert(0, "НЕ ПУБЛИКОВАТЬ, ПОКА НЕ ПРОВЕРЕНО НАЛИЧИЕ.")
+
     return {
-        "Приоритет": 1 if r["Сумма"] >= 500_000 else 2,
-        "Тип": "отдельное",
+        "Приоритет": 9 if disputed else (1 if r["Сумма"] >= 500_000 else 2),
+        "Тип": "проверить" if disputed else "отдельное",
         "Заголовок": shorten(f"{name} судовой"),
         "Цена, руб": money(r["Цена за ед., руб"]),
+        "Цена число": float(r["Цена за ед., руб"]),
         "Категория Авито": CATEGORY.get(r["Товарная группа"], ""),
         "Описание": " ".join(parts),
         "Что входит": f"{name} — {r['Наличие']:.0f} шт",
@@ -120,6 +130,7 @@ def lot_ad(group, sub, items):
         "Тип": "лот",
         "Заголовок": shorten(f"{sub} судовая, склад Владивосток"),
         "Цена, руб": money(min(prices)),
+        "Цена число": float(min(prices)),
         "Категория Авито": CATEGORY.get(group, ""),
         "Описание": "\n".join(lines),
         "Что входит": f"{len(items)} наименований, {units:.0f} единиц, "
@@ -127,6 +138,148 @@ def lot_ad(group, sub, items):
         "Локация": "склад Владивосток",
         "Нужны фото": "да, общий план и крупные позиции",
     }
+
+
+RULES = [
+    ("Номер чертежа обязательно",
+     "Снабженцы ищут не «арматуру», а «521-01.468-07» или «544-03.067». "
+     "В описаниях чертежи уже проставлены из реестра. Это главное отличие "
+     "от обычного объявления, по чертежу вас найдут те, кому нужна "
+     "конкретная деталь."),
+    ("Цена обязательна",
+     "По журналу обзвона первый вопрос всегда про цену. Объявление без цены "
+     "на этом рынке не работает. Поэтому 100 позиций без цены сюда не попали, "
+     "их сначала надо оценить."),
+    ("Не выкладывать спорные позиции",
+     "Регулятор РТНД-150 числится с наличием 3 при учете 0, иллюминатор Ф300 "
+     "створчатый не пересчитан. Продать то, чего нет, хуже, чем не продать."),
+    ("Регион Владивосток, отправка по России",
+     "Покупатели по журналу обзвона есть в Петербурге, Нижнем Новгороде, "
+     "Москве, на Камчатке и в Магадане. В объявлении пишем про отправку "
+     "транспортной компанией."),
+    ("Фото обязательны",
+     "На Google Drive есть папка «Фото» по судовому оборудованию. Объявление "
+     "без фото на промышленном рынке не смотрят. Нужно разобрать архив "
+     "по позициям."),
+    ("Фарпост важнее Авито во Владивостоке",
+     "По промышленному и судовому товару на Дальнем Востоке Фарпост сильнее. "
+     "Выкладывать на обе площадки, отмечать в таблице обе колонки."),
+    ("Один телефон и один ответственный",
+     "Все звонки идут на Олесю. Иначе покупатель услышит разные цены "
+     "от разных людей и уйдет."),
+    ("Бизнес-профиль",
+     "76 объявлений разовыми платными размещениями выйдут дороже, чем тариф "
+     "для профессиональных продавцов. Сравнить стоимость до публикации."),
+    ("Допродажа в каждом объявлении",
+     "В описании есть строка о том, что склад большой и перечень вышлем "
+     "по запросу. Человек пришел за клинкетом, а забрал еще и фильтры."),
+]
+
+
+def write_xlsx(path, ads):
+    """Тот же список объявлений, но в виде рабочей таблицы."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    font = "Arial"
+    head_fill = PatternFill("solid", fgColor="1F3864")
+    head_font = Font(name=font, size=11, bold=True, color="FFFFFF")
+    base = Font(name=font, size=10)
+    input_fill = PatternFill("solid", fgColor="FFFF00")
+    prio_fills = {1: PatternFill("solid", fgColor="FCE4E4"),
+                  2: PatternFill("solid", fgColor="FFF6E0"),
+                  3: PatternFill("solid", fgColor="EAF1EA"),
+                  9: PatternFill("solid", fgColor="D9D9D9")}
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Объявления"
+
+    ws["A1"] = "Объявления для Авито и Фарпоста"
+    ws["A1"].font = Font(name=font, size=14, bold=True, color="1F3864")
+    ws["A2"] = ("Публикуем волнами: сначала приоритет 1, затем 2, затем 3. "
+                "Желтые колонки заполняете сами. Правила — на листе «Как публиковать».")
+    ws["A2"].font = Font(name=font, size=9, italic=True, color="666666")
+
+    headers = ["№", "Приоритет", "Тип", "Заголовок для объявления", "Цена, руб",
+               "Категория", "Текст объявления", "Что входит", "Локация",
+               "На Авито", "На Фарпост", "Дата публикации", "Отклики"]
+    start = 4
+    for i, h in enumerate(headers, start=1):
+        cell = ws.cell(row=start, column=i, value=h)
+        cell.fill = head_fill
+        cell.font = head_font
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        cell.border = border
+    ws.row_dimensions[start].height = 30
+
+    for n, a in enumerate(ads, start=1):
+        row = start + n
+        values = [n, a["Приоритет"], a["Тип"], a["Заголовок"], a["Цена число"],
+                  a["Категория Авито"], a["Описание"], a["Что входит"],
+                  a["Локация"], "Нет", "Нет", "", ""]
+        for i, v in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=i, value=v)
+            cell.font = base
+            cell.border = border
+            cell.alignment = Alignment(vertical="top",
+                                       wrap_text=(i in (4, 6, 7, 8)))
+            if i == 5:
+                cell.number_format = "#,##0"
+            if i <= 3:
+                cell.fill = prio_fills.get(a["Приоритет"], prio_fills[9])
+            if i in (10, 11, 12, 13):
+                cell.fill = input_fill
+        ws.row_dimensions[row].height = 58
+
+    last = start + len(ads)
+    dv = DataValidation(type="list", formula1='"Да,Нет"', allow_blank=True)
+    ws.add_data_validation(dv)
+    dv.add(f"J{start + 1}:K{last}")
+
+    s = last + 2
+    ws.cell(row=s, column=3, value="Всего объявлений").font = base
+    ws.cell(row=s, column=4, value=f"=COUNTA(D{start + 1}:D{last})").font = base
+    ws.cell(row=s + 1, column=3, value="Опубликовано на Авито").font = base
+    ws.cell(row=s + 1, column=4,
+            value=f'=COUNTIF(J{start + 1}:J{last},"Да")').font = base
+    ws.cell(row=s + 2, column=3, value="Опубликовано на Фарпост").font = base
+    ws.cell(row=s + 2, column=4,
+            value=f'=COUNTIF(K{start + 1}:K{last},"Да")').font = base
+    ws.cell(row=s + 3, column=3, value="Осталось выложить на Авито").font = base
+    ws.cell(row=s + 3, column=4,
+            value=f"=D{s}-D{s + 1}").font = Font(name=font, bold=True, color="C00000")
+
+    ws.auto_filter.ref = f"A{start}:M{last}"
+    ws.freeze_panes = f"D{start + 1}"
+    for i, w in enumerate([5, 10, 11, 40, 12, 30, 85, 34, 18, 10, 12, 15, 24], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    # лист с правилами
+    ws2 = wb.create_sheet("Как публиковать")
+    ws2["A1"] = "Правила публикации"
+    ws2["A1"].font = Font(name=font, size=14, bold=True, color="1F3864")
+    for i, h in enumerate(["№", "Правило", "Почему"], start=1):
+        cell = ws2.cell(row=3, column=i, value=h)
+        cell.fill = head_fill
+        cell.font = head_font
+        cell.border = border
+    for n, (rule, why) in enumerate(RULES, start=1):
+        row = 3 + n
+        for i, v in enumerate([n, rule, why], start=1):
+            cell = ws2.cell(row=row, column=i, value=v)
+            cell.font = base
+            cell.border = border
+            cell.alignment = Alignment(vertical="top", wrap_text=(i in (2, 3)))
+        ws2.row_dimensions[row].height = 52
+    for i, w in enumerate([5, 38, 95], start=1):
+        ws2.column_dimensions[get_column_letter(i)].width = w
+
+    wb.save(path)
 
 
 def main():
@@ -160,6 +313,9 @@ def main():
         for a in ads:
             fh.write("\t".join(str(a[c]).replace("\n", " | ") for c in COLUMNS) + "\n")
 
+    xlsx = OUT / "Объявления_Авито_и_Фарпост.xlsx"
+    write_xlsx(xlsx, ads)
+
     no_price = [r for r in rows
                 if (r["Наличие"] or 0) > 0 and not r["Цена за ед., руб"]]
     print(f"объявлений всего: {len(ads)}")
@@ -172,7 +328,8 @@ def main():
     print("\nпорядок публикации:")
     for level, label in ((1, "первая волна, дороже 500 тыс"),
                          (2, "вторая волна"),
-                         (3, "третья волна, мелкие лоты")):
+                         (3, "третья волна, мелкие лоты"),
+                         (9, "не публиковать до проверки наличия")):
         part = [a for a in ads if a["Приоритет"] == level]
         print(f"  приоритет {level} ({label}): {len(part)} объявлений")
 
