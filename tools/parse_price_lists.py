@@ -49,6 +49,14 @@ SUPPLIERS = {
     "aibeauty": ("Aibeauty", "KG", "USD"),
     "koreaglobal": ("Korea Global", "KG", "USD"),
     "holikorea": ("Holi Korea", "KG", "USD"),
+    # Прайс самого бренда, а не посредника: это нижняя граница цены.
+    "medipeel": ("MEDI-PEEL (бренд)", "KR", "KRW"),
+}
+
+# Папки с прайсом самого бренда: колонки бренда в таких файлах нет, а
+# заголовок листа принять за бренд нельзя.
+FOLDER_BRAND = {
+    "medipeel": "MEDI-PEEL",
 }
 
 
@@ -359,7 +367,8 @@ def brand_from_filename(path):
     return name.replace("_", " ").strip(" ._").upper()
 
 
-def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, currency):
+def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, currency,
+                force_brand=None):
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
     header_idx = find_header_row(rows)
     if header_idx is None:
@@ -417,7 +426,7 @@ def parse_sheet(ws, source, sheet_name, fallback_brand, supplier, country, curre
         joint_code = joint if joint and joint.isdigit() else None
         brand = clean_text(cell("brand")) or (None if joint_code else joint) or last_brand
         last_brand = brand  # в прайсах бренд ставят только в первой строке блока
-        brand = normalize_brand(brand)
+        brand = normalize_brand(force_brand or brand)
 
         unit, per_pack = detect_price_unit(clean_text(cell("volume")), name_en or name_kr)
         records.append({
@@ -568,11 +577,12 @@ def open_workbook(path):
 
 def parse_file(path, supplier, country, currency):
     wb = open_workbook(path)
-    fallback_brand = brand_from_filename(path)
+    force_brand = FOLDER_BRAND.get(os.path.basename(os.path.dirname(path)))
+    fallback_brand = force_brand or brand_from_filename(path)
     records, notes = [], []
     for sheet_name in pick_sheets(wb.sheetnames):
         found, problem = parse_sheet(wb[sheet_name], path, sheet_name, fallback_brand,
-                                     supplier, country, currency)
+                                     supplier, country, currency, force_brand)
         records.extend(found)
         if problem:
             notes.append(f"{sheet_name}: {problem}")
