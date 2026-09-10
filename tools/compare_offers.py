@@ -131,10 +131,37 @@ def sane(base, target, known, price):
     return True
 
 
-def main(sources, stock_path, target):
+def read_rfq(path):
+    """Наша заявка как основа таблицы: строки брендов в ней пропускаем."""
+    table = pd.read_excel(path, sheet_name=0, header=0)
+    table = table[table["Товар"].notna()]
+    codes = pd.to_numeric(table["Штрихкод"], errors="coerce").astype("Int64")
+    return pd.DataFrame({
+        "Бренд": table["Бренд"].map(same),
+        "Товар": table["Товар"],
+        "Кол-во, шт": table["Количество, шт"],
+        "Штрихкод": [str(code) if pd.notna(code) else "" for code in codes],
+        # Своей цены у заявки нет, но merge ждет колонку у каждого источника.
+        "Цена, KRW": None,
+    }).reset_index(drop=True)
+
+
+def main(sources, stock_path, target, rfq_path=None):
     offers = {name: read_any(path) for name, path in sources}
-    table = merge(offers)
-    names = list(offers)
+    asked = 0
+    if rfq_path:
+        # Основа — наша заявка: тогда видно и то, что поставщик закрыл, и то,
+        # чего он не предложил вовсе.
+        rfq = read_rfq(rfq_path)
+        asked = len(rfq)
+        offers = {"ЗАЯВКА": rfq, **offers}
+        table = merge(offers).drop(columns=["ЗАЯВКА"], errors="ignore")
+    else:
+        table = merge(offers)
+    names = [name for name in offers if name != "ЗАЯВКА"]
+    if asked:
+        table["В заявке"] = ["да" if index < asked else "нет"
+                             for index in range(len(table))]
 
     stock = read_order(stock_path, everything=True)
     stock["Себестоимость, руб"] = stock["Себестоимость, руб"] / 1.1
@@ -157,7 +184,8 @@ def main(sources, stock_path, target):
 
     columns = (["Бренд", "Товар", "Штрихкод", "Кол-во, шт"] + names
                + [f"{name}, руб" for name in names]
-               + ["Лучший", "Лучшая цена, руб", "Наша себестоимость, руб"])
+               + ["Лучший", "Лучшая цена, руб", "Наша себестоимость, руб"]
+               + (["В заявке"] if asked else []))
     table = table.sort_values(["Бренд", "Товар"])
 
     book = Workbook()
@@ -178,15 +206,23 @@ def main(sources, stock_path, target):
         ws.append([number] + [item[column] if pd.notna(item[column]) else ""
                               for column in columns])
     for index, width in enumerate([5, 16, 56, 15, 11] + [11] * len(names)
-                                  + [12] * len(names) + [14, 15, 18], start=1):
+                                  + [12] * len(names) + [14, 15, 18, 10], start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "C2"
 
     os.makedirs("outputs", exist_ok=True)
     book.save(target)
     for name in names:
-        got = table[name].notna().sum()
-        print(f"{name}: {got} позиций с ценой")
+        got = table[name].notna()
+        if asked:
+            inside = int((got & (table["В заявке"] == "да")).sum())
+            print(f"{name}: {inside} позиций заявки из {asked}, "
+                  f"еще {int(got.sum()) - inside} предложил сверх нее")
+        else:
+            print(f"{name}: {int(got.sum())} позиций с ценой")
+    if asked:
+        covered = table[names].notna().any(axis=1) & (table["В заявке"] == "да")
+        print(f"Заявка закрыта: {int(covered.sum())} позиций из {asked}")
     print(f"Всего строк: {len(table)}")
     print(f"Сохранено: {target}")
 
@@ -195,6 +231,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ответы поставщиков в одной таблице")
     parser.add_argument("offers", nargs="+", help="ИМЯ=файл")
     parser.add_argument("--stock", required=True)
+    parser.add_argument("--rfq", help="наша заявка: считать по ее позициям")
     parser.add_argument("--out", default=TARGET)
     args = parser.parse_args()
-    main([offer.split("=", 1) for offer in args.offers], args.stock, args.out)
+    main([offer.split("=", 1) for offer in args.offers], args.stock, args.out,
+         args.rfq)
