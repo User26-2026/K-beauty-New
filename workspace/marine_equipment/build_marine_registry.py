@@ -10,6 +10,7 @@
   sudovoe_no_price_<дата>.tsv    — наличие есть, цены нет: заполнить вручную
 """
 
+import csv
 import datetime as dt
 import pathlib
 import re
@@ -43,6 +44,12 @@ SOURCES = [
          name=1, draw=2, qty=3, stock=3, price=5, total=6, note=None),
     dict(file="foye.xls", loc="Фойе", start=4,
          name=1, draw=None, qty=2, stock=3, price=5, total=6, note=8),
+    # склад электрики: цен в файле нет, только наименование и количество
+    dict(file="sklad_elektriki.xls", loc="Склад электрики", start=4,
+         name=1, draw=None, qty=2, stock=2, price=None, total=None, note=None),
+    # перечень ЗИП и насосов: покрывает в том числе улицу, цен тоже нет
+    dict(file="zip_nasosy.csv", loc="ЗИП и насосы", start=1,
+         name=0, draw=None, qty=1, stock=1, price=None, total=None, note=None),
 ]
 
 # В блоке контакторов менеджерской наименование сдвинуто на строку вниз
@@ -67,6 +74,10 @@ EQUIPMENT_MODELS = (
     "нцв160/80", "нцв 160/80", "нцв 40/20", "нцв 63/20", "нцвс 63/20",
     "нцвс 40/20", "8nvd48a2u", "3д12", "6чн25/34", "экп 70/25",
     "двигатель этф-3", "двигатель д1.м",
+    # склад электрики
+    "пилстик 6чн40/46", "vd26/20", "3d6", "6 nvd26", "4ч 8,5/11",
+    "4ч10,5/13", "zd 72/48", "траловая лебедка", "сепараторы зип",
+    "насосы, сепаратор",
 )
 
 # строки-заголовки разделов внутри файлов
@@ -142,8 +153,13 @@ def num(v):
 
 
 def read_rows(path):
+    if path.suffix == ".csv":
+        with path.open(encoding="utf-8") as fh:
+            return [[norm(v) for v in row] for row in csv.reader(fh)]
     if path.suffix == ".xls":
-        sh = xlrd.open_workbook(path).sheet_by_index(0)
+        wb = xlrd.open_workbook(path)
+        # в части файлов первые листы пустые, данные лежат дальше
+        sh = next((s for s in wb.sheets() if s.nrows), wb.sheet_by_index(0))
         return [[norm(sh.cell_value(r, c)) for c in range(sh.ncols)]
                 for r in range(sh.nrows)]
     ws = openpyxl.load_workbook(path, data_only=True).worksheets[0]
