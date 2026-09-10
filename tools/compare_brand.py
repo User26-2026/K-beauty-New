@@ -3,9 +3,13 @@
 Товары сопоставляем по штрихкоду: названия у поставщиков расходятся
 (MEDI-PEEL против MEDIPEEL, разные хвосты и приписки), а штрихкод один.
 
+Ключ --offer добавляет к прайсам ответ поставщика на нашу заявку: цены из
+инвойса в общую таблицу прайсов не попадают, а сравнивать их надо.
+
 Запуск:
     python3 tools/compare_brand.py MEDIPEEL
     python3 tools/compare_brand.py "ROUND LAB" --min-diff 5
+    python3 tools/compare_brand.py PETITFEE --offer "J2K=ответ.xlsx"
 """
 
 import argparse
@@ -17,6 +21,8 @@ from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+import add_barcodes
+from compare_offers import read_any
 from price_unit import unify_packs
 
 SRC = "outputs/prices_normalized.xlsx"
@@ -34,6 +40,55 @@ def load_brand(brand, country):
     rows = df[mask].copy()
     rows["Штрихкод"] = rows["Штрихкод"].astype(str).str.replace(r"\D", "", regex=True)
     return rows[rows["Штрихкод"].str.len() >= 8]
+
+
+# Цена, которая отличается от прайсовой втрое, — это другая фасовка:
+# у PETITFEE рядом с банкой на 60 патчей идет пробник «1 Pairs».
+PRICE_LIMIT = 3
+
+
+def guess_code(name, price, known):
+    """Штрихкод по названию: в ответах поставщики ставят его не везде."""
+    fits = [index for score, index in add_barcodes.candidates(name, known["Бренд"].iloc[0], known)
+            if pd.notna(known.at[index, "Закупка, KRW"])
+            and max(price, known.at[index, "Закупка, KRW"])
+            / min(price, known.at[index, "Закупка, KRW"]) <= PRICE_LIMIT]
+    if len(set(known.loc[fits, "Штрихкод"])) != 1:
+        return None
+    return known.at[fits[0], "Штрихкод"]
+
+
+def load_offers(pairs, brand, country, known):
+    """Ответы поставщиков на заявку, приведенные к строкам прайса."""
+    if not pairs:
+        return pd.DataFrame()
+    pool = known.copy()
+    pool["Марка"] = (pool["Бренд"].astype(str).str.upper()
+                     .str.replace(r"[^A-Z0-9]", "", regex=True))
+    pool["Слова"] = pool["Название EN"].map(add_barcodes.words)
+    pool["Тон"] = pool["Название EN"].map(add_barcodes.tone)
+
+    rows = []
+    for name, path in pairs:
+        table = read_any(path)
+        mask = (table["Бренд"].fillna("").astype(str).str.upper().str.contains(brand.upper())
+                | table["Товар"].fillna("").astype(str).str.upper().str.contains(brand.upper()))
+        for _, item in table[mask].iterrows():
+            code = str(item["Штрихкод"] or "")
+            if len(code) < 8:
+                code = guess_code(item["Товар"], item["Цена, KRW"], pool) if not pool.empty else None
+            if not code:
+                continue
+            rows.append({
+                "Поставщик": name, "Страна": country, "Валюта": "KRW",
+                "Бренд": brand.upper(), "Штрихкод": code,
+                "Название EN": item["Товар"], "Объем": None,
+                "Базис": "EXW", "Единица цены": "за шт", "Штук в упаковке": None,
+                "MSRP, KRW": None, "Закупка, KRW": item["Цена, KRW"],
+                "Цена за штуку, KRW": item["Цена, KRW"],
+                "Цена за штуку, руб": item["Цена, KRW"] * RATE,
+            })
+    return pd.DataFrame(rows)
 
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
@@ -120,11 +175,20 @@ def paint_overpay(worksheet, first_col, last_col, first_row, last_row):
             cell.number_format = "0.0\%"
 
 
-def main(brand, min_diff, country):
+def main(brand, min_diff, country, offers=()):
     if not os.path.exists(SRC):
         raise SystemExit(f"Нет файла {SRC} — сначала запустите parse_price_lists.py")
 
     rows = load_brand(brand, country)
+    extra = load_offers(offers, brand, country, rows)
+    if not extra.empty:
+        # Дубли по названию у одного поставщика не берем: в ответе
+        # встречается и банка, и пробник на ту же позицию.
+        extra = extra.drop_duplicates(["Поставщик", "Штрихкод"])
+        rows = pd.concat([rows, extra], ignore_index=True)
+        print(f"Из ответов на заявку добавлено {len(extra)} позиций: "
+              + ", ".join(f"{name} — {count}" for name, count
+                          in extra['Поставщик'].value_counts().items()))
     if rows.empty:
         raise SystemExit(f"Бренд {brand} не найден в стране {country}")
 
@@ -230,5 +294,8 @@ if __name__ == "__main__":
     parser.add_argument("brand", help="название бренда, часть тоже подойдет")
     parser.add_argument("--min-diff", type=float, default=0.0, help="порог расхождения, %%")
     parser.add_argument("--country", default="KR", help="страна поставщиков: KR, RU или KG")
+    parser.add_argument("--offer", action="append", default=[],
+                        help="ответ на заявку: ИМЯ=файл")
     ns = parser.parse_args()
-    main(ns.brand, ns.min_diff, ns.country)
+    main(ns.brand, ns.min_diff, ns.country,
+         [item.split("=", 1) for item in ns.offer])
