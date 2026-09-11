@@ -1,10 +1,54 @@
 [
   {
-    "updTime": "2026-09-09T23:59:59+03:00",
+    "updTime": "2026-09-10T23:59:59+03:00",
+    "campName": "Авто: Тоник [198143251]",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 412,
+    "advertId": 27321432,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-10T23:59:59+03:00",
     "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 0,
-    "updSum": 1090,
+    "updSum": 176,
+    "advertId": 36382101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-10T23:59:59+03:00",
+    "campName": "868700077 поиск",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 313,
+    "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-10T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 327,
+    "advertId": 35972422,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-10T21:24:59.999708+03:00",
+    "campName": "238415286 полки",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 849,
     "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
@@ -23,11 +67,11 @@
   },
   {
     "updTime": "2026-09-09T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 0,
-    "updSum": 307,
-    "advertId": 35972422,
+    "updSum": 1090,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -44,11 +88,33 @@
     "currency": "RUB"
   },
   {
+    "updTime": "2026-09-09T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 307,
+    "advertId": 35972422,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
     "updTime": "2026-09-09T20:15:00.001007+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 0,
     "updSum": 276,
+    "advertId": 27321432,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-08T23:59:59+03:00",
+    "campName": "Авто: Тоник [198143251]",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 363,
     "advertId": 27321432,
     "advertType": 9,
     "advertStatus": 9,
@@ -67,11 +133,11 @@
   },
   {
     "updTime": "2026-09-08T23:59:59+03:00",
-    "campName": "Авто: Тоник [198143251]",
+    "campName": "868700077 поиск",
     "paymentType": "Баланс",
     "updNum": 0,
-    "updSum": 363,
-    "advertId": 27321432,
+    "updSum": 308,
+    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -88,33 +154,11 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-09-08T23:59:59+03:00",
-    "campName": "868700077 поиск",
-    "paymentType": "Баланс",
-    "updNum": 0,
-    "updSum": 308,
-    "advertId": 35619101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
     "updTime": "2026-09-08T00:50:00.004988+03:00",
     "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 0,
     "updSum": 22,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-07T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 0,
-    "updSum": 1186,
     "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
@@ -133,11 +177,11 @@
   },
   {
     "updTime": "2026-09-07T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 0,
-    "updSum": 291,
-    "advertId": 35972422,
+    "updSum": 1186,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -149,6 +193,17 @@
     "updNum": 0,
     "updSum": 265,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-07T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 0,
+    "updSum": 291,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -177,17 +232,6 @@
   },
   {
     "updTime": "2026-09-06T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 0,
-    "updSum": 1323,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-06T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 0,
@@ -199,11 +243,11 @@
   },
   {
     "updTime": "2026-09-06T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 0,
-    "updSum": 350,
-    "advertId": 35972422,
+    "updSum": 1323,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -220,12 +264,12 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-09-05T23:59:59+03:00",
-    "campName": "238415286 полки",
+    "updTime": "2026-09-06T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
-    "updNum": 313723031,
-    "updSum": 649,
-    "advertId": 36382101,
+    "updNum": 0,
+    "updSum": 350,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -243,11 +287,11 @@
   },
   {
     "updTime": "2026-09-05T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313723031,
-    "updSum": 183,
-    "advertId": 35972422,
+    "updSum": 649,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -259,6 +303,17 @@
     "updNum": 313723031,
     "updSum": 305,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-05T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313723031,
+    "updSum": 183,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -287,17 +342,6 @@
   },
   {
     "updTime": "2026-09-04T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 313723031,
-    "updSum": 1006,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-04T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 313723031,
@@ -309,11 +353,11 @@
   },
   {
     "updTime": "2026-09-04T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313723031,
-    "updSum": 311,
-    "advertId": 35972422,
+    "updSum": 1006,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -325,6 +369,17 @@
     "updNum": 313723031,
     "updSum": 284,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-04T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313723031,
+    "updSum": 311,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -353,17 +408,6 @@
   },
   {
     "updTime": "2026-09-03T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 313723031,
-    "updSum": 1278,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-03T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 313723031,
@@ -375,11 +419,11 @@
   },
   {
     "updTime": "2026-09-03T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313723031,
-    "updSum": 317,
-    "advertId": 35972422,
+    "updSum": 1278,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -396,23 +440,12 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-09-02T23:59:59+03:00",
-    "campName": "150925321 поиск",
+    "updTime": "2026-09-03T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 313723031,
-    "updSum": 6,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-02T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 313723031,
-    "updSum": 315,
-    "advertId": 36382101,
+    "updSum": 317,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -441,13 +474,24 @@
   },
   {
     "updTime": "2026-09-02T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313723031,
-    "updSum": 324,
-    "advertId": 35972422,
+    "updSum": 315,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-02T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313723031,
+    "updSum": 6,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -457,6 +501,17 @@
     "updNum": 313723031,
     "updSum": 334,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-02T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313723031,
+    "updSum": 324,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -485,28 +540,6 @@
   },
   {
     "updTime": "2026-09-01T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 313723031,
-    "updSum": 86,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-01T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 313723031,
-    "updSum": 1130,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-09-01T23:59:59+03:00",
     "campName": "150925322  поиск",
     "paymentType": "Баланс",
     "updNum": 313723031,
@@ -529,13 +562,24 @@
   },
   {
     "updTime": "2026-09-01T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313723031,
-    "updSum": 304,
-    "advertId": 35972422,
+    "updSum": 1130,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-09-01T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313723031,
+    "updSum": 86,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -550,34 +594,23 @@
     "currency": "RUB"
   },
   {
+    "updTime": "2026-09-01T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313723031,
+    "updSum": 304,
+    "advertId": 35972422,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
     "updTime": "2026-09-01T00:30:00.003667+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 313723031,
     "updSum": 10,
     "advertId": 27321432,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-31T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 313691310,
-    "updSum": 1927,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-31T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 313691310,
-    "updSum": 825,
-    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -606,13 +639,24 @@
   },
   {
     "updTime": "2026-08-31T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313691310,
-    "updSum": 327,
-    "advertId": 35972422,
+    "updSum": 825,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-31T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313691310,
+    "updSum": 1927,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -627,33 +671,22 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-31T12:55:00.002342+03:00",
-    "campName": "238415286 полки",
+    "updTime": "2026-08-31T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 313691310,
-    "updSum": 459,
-    "advertId": 36382101,
+    "updSum": 327,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-30T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 313691310,
-    "updSum": 450,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-30T23:59:59+03:00",
+    "updTime": "2026-08-31T12:55:00.002342+03:00",
     "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313691310,
-    "updSum": 1407,
+    "updSum": 459,
     "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
@@ -683,13 +716,24 @@
   },
   {
     "updTime": "2026-08-30T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 313691310,
-    "updSum": 370,
-    "advertId": 35972422,
+    "updSum": 1407,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-30T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313691310,
+    "updSum": 450,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -699,6 +743,17 @@
     "updNum": 313691310,
     "updSum": 423,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-30T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 313691310,
+    "updSum": 370,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -738,28 +793,6 @@
   },
   {
     "updTime": "2026-08-29T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 312805562,
-    "updSum": 1174,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-29T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312805562,
-    "updSum": 1211,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-29T23:59:59+03:00",
     "campName": "150925322  поиск",
     "paymentType": "Баланс",
     "updNum": 312805562,
@@ -782,13 +815,24 @@
   },
   {
     "updTime": "2026-08-29T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 333,
-    "advertId": 35972422,
+    "updSum": 1211,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-29T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312805562,
+    "updSum": 1174,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -798,6 +842,17 @@
     "updNum": 312805562,
     "updSum": 88,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-29T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312805562,
+    "updSum": 333,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -826,28 +881,6 @@
   },
   {
     "updTime": "2026-08-28T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 312805562,
-    "updSum": 1346,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-28T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312805562,
-    "updSum": 1165,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-28T23:59:59+03:00",
     "campName": "150925322  поиск",
     "paymentType": "Баланс",
     "updNum": 312805562,
@@ -870,13 +903,24 @@
   },
   {
     "updTime": "2026-08-28T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 338,
-    "advertId": 35972422,
+    "updSum": 1165,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-28T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312805562,
+    "updSum": 1346,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -891,12 +935,12 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-27T23:59:59+03:00",
-    "campName": "238415286 полки",
+    "updTime": "2026-08-28T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 165,
-    "advertId": 36382101,
+    "updSum": 338,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -914,11 +958,11 @@
   },
   {
     "updTime": "2026-08-27T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 147,
-    "advertId": 35972422,
+    "updSum": 165,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -930,6 +974,17 @@
     "updNum": 312805562,
     "updSum": 337,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-27T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312805562,
+    "updSum": 147,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -969,17 +1024,6 @@
   },
   {
     "updTime": "2026-08-26T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312805562,
-    "updSum": 1923,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-26T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312805562,
@@ -991,11 +1035,11 @@
   },
   {
     "updTime": "2026-08-26T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 343,
-    "advertId": 35972422,
+    "updSum": 1923,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1012,12 +1056,12 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-25T23:59:59+03:00",
-    "campName": "238415286 полки",
+    "updTime": "2026-08-26T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 25,
-    "advertId": 36382101,
+    "updSum": 343,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1035,11 +1079,11 @@
   },
   {
     "updTime": "2026-08-25T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 336,
-    "advertId": 35972422,
+    "updSum": 25,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1051,6 +1095,17 @@
     "updNum": 312805562,
     "updSum": 350,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-25T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312805562,
+    "updSum": 336,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1079,17 +1134,6 @@
   },
   {
     "updTime": "2026-08-24T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312805562,
-    "updSum": 1075,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-24T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312805562,
@@ -1101,11 +1145,11 @@
   },
   {
     "updTime": "2026-08-24T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 373,
-    "advertId": 35972422,
+    "updSum": 1075,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1122,22 +1166,22 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-24T16:55:00.002295+03:00",
-    "campName": "238415286 полки",
+    "updTime": "2026-08-24T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 1277,
-    "advertId": 36382101,
+    "updSum": 373,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-23T23:59:59+03:00",
+    "updTime": "2026-08-24T16:55:00.002295+03:00",
     "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 1723,
+    "updSum": 1277,
     "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
@@ -1156,11 +1200,11 @@
   },
   {
     "updTime": "2026-08-23T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312805562,
-    "updSum": 408,
-    "advertId": 35972422,
+    "updSum": 1723,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1172,6 +1216,17 @@
     "updNum": 312805562,
     "updSum": 400,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-23T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312805562,
+    "updSum": 408,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1200,17 +1255,6 @@
   },
   {
     "updTime": "2026-08-22T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312009000,
-    "updSum": 2348,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-22T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312009000,
@@ -1222,11 +1266,11 @@
   },
   {
     "updTime": "2026-08-22T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 339,
-    "advertId": 35972422,
+    "updSum": 2348,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1243,11 +1287,33 @@
     "currency": "RUB"
   },
   {
+    "updTime": "2026-08-22T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312009000,
+    "updSum": 339,
+    "advertId": 35972422,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
     "updTime": "2026-08-22T22:30:00.00167+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312009000,
     "updSum": 329,
+    "advertId": 27321432,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-21T23:59:59+03:00",
+    "campName": "Авто: Тоник [198143251]",
+    "paymentType": "Баланс",
+    "updNum": 312009000,
+    "updSum": 336,
     "advertId": 27321432,
     "advertType": 9,
     "advertStatus": 9,
@@ -1266,11 +1332,11 @@
   },
   {
     "updTime": "2026-08-21T23:59:59+03:00",
-    "campName": "Авто: Тоник [198143251]",
+    "campName": "868700077 поиск",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 336,
-    "advertId": 27321432,
+    "updSum": 175,
+    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1282,17 +1348,6 @@
     "updNum": 312009000,
     "updSum": 323,
     "advertId": 35972422,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-21T23:59:59+03:00",
-    "campName": "868700077 поиск",
-    "paymentType": "Баланс",
-    "updNum": 312009000,
-    "updSum": 175,
-    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1310,17 +1365,6 @@
   },
   {
     "updTime": "2026-08-20T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312009000,
-    "updSum": 574,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-20T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312009000,
@@ -1332,11 +1376,11 @@
   },
   {
     "updTime": "2026-08-20T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 134,
-    "advertId": 35972422,
+    "updSum": 574,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1348,6 +1392,17 @@
     "updNum": 312009000,
     "updSum": 337,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-20T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312009000,
+    "updSum": 134,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1376,17 +1431,6 @@
   },
   {
     "updTime": "2026-08-19T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312009000,
-    "updSum": 386,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-19T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312009000,
@@ -1398,11 +1442,11 @@
   },
   {
     "updTime": "2026-08-19T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 345,
-    "advertId": 35972422,
+    "updSum": 386,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1414,6 +1458,17 @@
     "updNum": 312009000,
     "updSum": 382,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-19T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312009000,
+    "updSum": 345,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1442,17 +1497,6 @@
   },
   {
     "updTime": "2026-08-18T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 312009000,
-    "updSum": 1179,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-18T23:59:59+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 312009000,
@@ -1464,11 +1508,11 @@
   },
   {
     "updTime": "2026-08-18T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 617,
-    "advertId": 35972422,
+    "updSum": 1179,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1485,12 +1529,12 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-17T23:59:59+03:00",
-    "campName": "238415286 полки",
+    "updTime": "2026-08-18T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 904,
-    "advertId": 36382101,
+    "updSum": 617,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1508,11 +1552,11 @@
   },
   {
     "updTime": "2026-08-17T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 1251,
-    "advertId": 35972422,
+    "updSum": 904,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1524,6 +1568,17 @@
     "updNum": 312009000,
     "updSum": 428,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-17T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 312009000,
+    "updSum": 1251,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1552,6 +1607,17 @@
   },
   {
     "updTime": "2026-08-16T23:59:59+03:00",
+    "campName": "Авто: Тоник [198143251]",
+    "paymentType": "Баланс",
+    "updNum": 312009000,
+    "updSum": 247,
+    "advertId": 27321432,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-16T23:59:59+03:00",
     "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 312009000,
@@ -1563,11 +1629,11 @@
   },
   {
     "updTime": "2026-08-16T23:59:59+03:00",
-    "campName": "Авто: Тоник [198143251]",
+    "campName": "868700077 поиск",
     "paymentType": "Баланс",
     "updNum": 312009000,
-    "updSum": 247,
-    "advertId": 27321432,
+    "updSum": 438,
+    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1595,23 +1661,23 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-16T23:59:59+03:00",
-    "campName": "868700077 поиск",
-    "paymentType": "Баланс",
-    "updNum": 312009000,
-    "updSum": 438,
-    "advertId": 35619101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
     "updTime": "2026-08-16T10:40:00.001343+03:00",
     "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 311113835,
     "updSum": 323,
     "advertId": 35972422,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-15T23:59:59+03:00",
+    "campName": "Авто: Тоник [198143251]",
+    "paymentType": "Баланс",
+    "updNum": 311113835,
+    "updSum": 169,
+    "advertId": 27321432,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1629,11 +1695,11 @@
   },
   {
     "updTime": "2026-08-15T23:59:59+03:00",
-    "campName": "Авто: Тоник [198143251]",
+    "campName": "868700077 поиск",
     "paymentType": "Баланс",
     "updNum": 311113835,
-    "updSum": 169,
-    "advertId": 27321432,
+    "updSum": 403,
+    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1661,22 +1727,22 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-15T23:59:59+03:00",
-    "campName": "868700077 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 403,
-    "advertId": 35619101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
     "updTime": "2026-08-15T09:20:00.00095+03:00",
     "campName": "Авто: Тоник [198143251]",
     "paymentType": "Баланс",
     "updNum": 311113835,
     "updSum": 42,
+    "advertId": 27321432,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-14T23:59:59+03:00",
+    "campName": "Авто: Тоник [198143251]",
+    "paymentType": "Баланс",
+    "updNum": 311113835,
+    "updSum": 215,
     "advertId": 27321432,
     "advertType": 9,
     "advertStatus": 9,
@@ -1695,11 +1761,11 @@
   },
   {
     "updTime": "2026-08-14T23:59:59+03:00",
-    "campName": "Авто: Тоник [198143251]",
+    "campName": "868700077 поиск",
     "paymentType": "Баланс",
     "updNum": 311113835,
-    "updSum": 215,
-    "advertId": 27321432,
+    "updSum": 318,
+    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1722,17 +1788,6 @@
     "updNum": 311113835,
     "updSum": 1307,
     "advertId": 35972422,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-14T23:59:59+03:00",
-    "campName": "868700077 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 318,
-    "advertId": 35619101,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1761,28 +1816,6 @@
   },
   {
     "updTime": "2026-08-13T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 7,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-13T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 1153,
-    "advertId": 36382101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-13T23:59:59+03:00",
     "campName": "150925322  поиск",
     "paymentType": "Баланс",
     "updNum": 311113835,
@@ -1805,13 +1838,24 @@
   },
   {
     "updTime": "2026-08-13T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 311113835,
-    "updSum": 1257,
-    "advertId": 35972422,
+    "updSum": 1153,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-13T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 311113835,
+    "updSum": 7,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -1826,23 +1870,12 @@
     "currency": "RUB"
   },
   {
-    "updTime": "2026-08-12T23:59:59+03:00",
-    "campName": "150925321 поиск",
+    "updTime": "2026-08-13T23:59:59+03:00",
+    "campName": "868575374 поиск",
     "paymentType": "Баланс",
     "updNum": 311113835,
-    "updSum": 621,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-12T23:59:59+03:00",
-    "campName": "238415286 полки",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 468,
-    "advertId": 36382101,
+    "updSum": 1257,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1871,13 +1904,24 @@
   },
   {
     "updTime": "2026-08-12T23:59:59+03:00",
-    "campName": "868575374 поиск",
+    "campName": "238415286 полки",
     "paymentType": "Баланс",
     "updNum": 311113835,
-    "updSum": 113,
-    "advertId": 35972422,
+    "updSum": 468,
+    "advertId": 36382101,
     "advertType": 9,
     "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-12T23:59:59+03:00",
+    "campName": "150925321 поиск",
+    "paymentType": "Баланс",
+    "updNum": 311113835,
+    "updSum": 621,
+    "advertId": 36464554,
+    "advertType": 9,
+    "advertStatus": 11,
     "currency": "RUB"
   },
   {
@@ -1887,6 +1931,17 @@
     "updNum": 311113835,
     "updSum": 359,
     "advertId": 35619101,
+    "advertType": 9,
+    "advertStatus": 9,
+    "currency": "RUB"
+  },
+  {
+    "updTime": "2026-08-12T23:59:59+03:00",
+    "campName": "868575374 поиск",
+    "paymentType": "Баланс",
+    "updNum": 311113835,
+    "updSum": 113,
+    "advertId": 35972422,
     "advertType": 9,
     "advertStatus": 9,
     "currency": "RUB"
@@ -1926,94 +1981,6 @@
   },
   {
     "updTime": "2026-08-12T08:34:26.42428+03:00",
-    "campName": "214964091 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 3000,
-    "advertId": 38605770,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T23:59:59+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 1952,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T23:59:59+03:00",
-    "campName": "150925322  поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 949,
-    "advertId": 27231288,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T23:59:59+03:00",
-    "campName": "Авто: Тоник [198143251]",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 273,
-    "advertId": 27321432,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T23:59:59+03:00",
-    "campName": "868575374 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 459,
-    "advertId": 35972422,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T23:59:59+03:00",
-    "campName": "868700077 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 420,
-    "advertId": 35619101,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T19:00:00.001175+03:00",
-    "campName": "868575374 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 875,
-    "advertId": 35972422,
-    "advertType": 9,
-    "advertStatus": 9,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T12:55:00.001765+03:00",
-    "campName": "150925321 поиск",
-    "paymentType": "Баланс",
-    "updNum": 311113835,
-    "updSum": 973,
-    "advertId": 36464554,
-    "advertType": 9,
-    "advertStatus": 11,
-    "currency": "RUB"
-  },
-  {
-    "updTime": "2026-08-11T08:05:15.451953+03:00",
     "campName": "214964091 поиск",
     "paymentType": "Баланс",
     "updNum": 311113835,
