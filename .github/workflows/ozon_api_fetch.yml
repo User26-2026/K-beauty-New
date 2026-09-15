@@ -52,6 +52,21 @@ jobs:
           export OZON_API_KEY="${SECRET_KEY:-$IN_KEY}"
           python tools/ozon_api/fetch_tariffs.py
 
+      - name: Fetch Ozon analytics (own cabinet, read-only)
+        if: always()  # аналитика независима от тарифов
+        env:
+          SECRET_CID: ${{ secrets.OZON_CLIENT_ID }}
+          SECRET_KEY: ${{ secrets.OZON_API_KEY }}
+          IN_CID: ${{ inputs.client_id }}
+          IN_KEY: ${{ inputs.api_key }}
+        run: |
+          for v in "$IN_KEY" "$IN_CID" "$SECRET_KEY" "$SECRET_CID"; do
+            [ -n "$v" ] && echo "::add-mask::$v"
+          done
+          export OZON_CLIENT_ID="${SECRET_CID:-$IN_CID}"
+          export OZON_API_KEY="${SECRET_KEY:-$IN_KEY}"
+          python tools/ozon_api/fetch_analytics.py
+
       - name: Commit & push data
         if: always()  # коммитим то, что скачалось, даже при частичных ошибках
         run: |
