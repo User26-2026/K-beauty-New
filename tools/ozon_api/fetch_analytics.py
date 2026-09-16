@@ -64,6 +64,8 @@ def post(path, payload, retries=4):
             if r.status_code == 429:
                 time.sleep(2 ** attempt)
                 continue
+            if r.status_code >= 400:
+                print(f'  [ДИАГ] {path} -> HTTP {r.status_code}: {r.text[:300]}')
             r.raise_for_status()
             return r.json()
         except requests.exceptions.RequestException:

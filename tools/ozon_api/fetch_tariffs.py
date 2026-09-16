@@ -48,6 +48,9 @@ def post(path, payload, retries=4):
             if r.status_code == 429:  # лимит запросов — ждём и повторяем
                 time.sleep(2 ** attempt)
                 continue
+            if r.status_code >= 400:  # печатаем тело ошибки Ozon для диагностики
+                print(f'  [ДИАГ] {path} -> HTTP {r.status_code}: {r.text[:300]}')
+                print(f'  [ДИАГ] Client-Id длина={len(CLIENT_ID)}, Api-Key длина={len(API_KEY)}')
             r.raise_for_status()
             return r.json()
         except requests.exceptions.RequestException:
