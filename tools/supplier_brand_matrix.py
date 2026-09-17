@@ -35,11 +35,14 @@ NOISE = {"ML", "GR", "EA", "PCS", "SET", "KIT", "NEW", "THE", "AND", "FOR",
          "SKIN", "CARE", "CREAM", "TONER", "SERUM", "MASK", "PACK"}
 
 
-def load(country):
+def load(country, require_code=True):
+    """Прайсы страны. Без штрихкода товар в сравнение не идет, но для
+    списка «у кого какой бренд есть» такие позиции нужны."""
     df = pd.read_excel(SRC, dtype={"Штрихкод": str})
     df = df[df["Страна"] == country].copy()
     df["Штрихкод"] = df["Штрихкод"].fillna("").astype(str).str.replace(r"\D", "", regex=True)
-    df = df[df["Штрихкод"].str.len() >= 8]
+    if require_code:
+        df = df[df["Штрихкод"].str.len() >= 8]
     df = df[df["Закупка, KRW"].notna() & (df["Закупка, KRW"] > 0)]
     df["Бренд в прайсе"] = df["Бренд"]
     df["Бренд"] = brand_names.resolve(df).fillna("БЕЗ БРЕНДА")
@@ -143,7 +146,11 @@ def brand_stats(prices, info, suppliers, rate=1.0):
             return round((block.loc[both, rival].sum() / block.loc[both, cheap].sum() - 1) * 100, 1)
 
         basket_gap = gap(leader, second) if second else None
-        if basket_gap is not None and basket_gap < 0:
+        # Уступать лидерство за корзину можно только тому, у кого бренд есть
+        # целиком: ответ на заявку по двум десяткам позиций дешевле прайса
+        # почти всегда, но заказать по нему весь бренд нельзя.
+        if (basket_gap is not None and basket_gap < 0
+                and coverage[second] >= MIN_COVERAGE):
             leader, second = second, leader
             rivals = {s: v for s, v in overpays.items() if s != leader}
             basket_gap = gap(leader, second)
@@ -261,11 +268,28 @@ def paint(worksheet, columns, last_row, top=25):
                            end_type="num", end_value=top, end_color="F8696B"))
 
 
-def main(country):
+def with_offers(df, offers, country):
+    """Добавляем к прайсам ответы поставщиков на заявку."""
+    from compare_offers import as_price_rows
+
+    extra = as_price_rows(offers, df, country)
+    if extra.empty:
+        return df
+    # Прайс того же поставщика уже мог содержать позицию: берем его цену из
+    # ответа, она свежее и относится к нашему объему.
+    keys = set(zip(extra["Поставщик"], extra["Штрихкод"]))
+    same = [pair in keys for pair in zip(df["Поставщик"], df["Штрихкод"])]
+    print(f"Из ответов на заявку добавлено {len(extra)} позиций: "
+          + ", ".join(f"{name} — {count}" for name, count
+                      in extra["Поставщик"].value_counts().items()))
+    return pd.concat([df[[not flag for flag in same]], extra], ignore_index=True)
+
+
+def main(country, offers=()):
     if not os.path.exists(SRC):
         raise SystemExit(f"Нет файла {SRC} — сначала запустите parse_price_lists.py")
 
-    df = load(country)
+    df = with_offers(load(country), offers, country)
     suppliers = sorted(df["Поставщик"].unique())
 
     df, bad = split_conflicts(df)
@@ -337,4 +361,7 @@ def main(country):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Матрица поставщики х бренды")
     parser.add_argument("--country", default="KR")
-    main(parser.parse_args().country)
+    parser.add_argument("--offer", action="append", default=[],
+                        help="ответ на заявку: ИМЯ=файл")
+    ns = parser.parse_args()
+    main(ns.country, [item.split("=", 1) for item in ns.offer])

@@ -18,18 +18,21 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from price_unit import unify_packs
-from supplier_brand_matrix import (IMPORT, MIN_COVERAGE, RATE, brand_stats, load,
-                                   price_table, split_conflicts)
+from rates import rub_per_unit
+from supplier_brand_matrix import (MIN_COVERAGE, brand_stats, load,
+                                   price_table, split_conflicts, with_offers)
 
 OUT_DIR = "outputs"
 COLUMN = "Цена за штуку (сводно)"
+# Меньше пяти общих позиций — это не сравнение цен, а случайность.
+FEW_POSITIONS = 5
 
 HEADER_FILL = PatternFill("solid", fgColor="DDEBF7")
 ONLY_FILL = PatternFill("solid", fgColor="FFF2CC")
 ALERT_FILL = PatternFill("solid", fgColor="FFC7CE")
 
 
-def positions(table, prices, suppliers):
+def positions(table, prices, suppliers, rate=None):
     """По каждому товару: у кого дешевле, кто второй и на сколько дороже."""
     columns = [s for s in suppliers if s in prices.columns]
     rows = table.copy()
@@ -37,7 +40,10 @@ def positions(table, prices, suppliers):
 
     rows["Брать у"] = values.idxmin(axis=1)
     rows["Цена, KRW/шт"] = values.min(axis=1).round(0)
-    rows["Себестоимость, руб/шт"] = (rows["Цена, KRW/шт"] * RATE * IMPORT).round(0)
+    # Курс с множителем импорта берем один на страну: для Кореи в цену
+    # входят логистика, пошлина и приемка.
+    rows["Себестоимость, руб/шт"] = (
+        rows["Цена, KRW/шт"] * (rate if rate else rub_per_unit("KRW"))).round(0)
     rows["Поставщиков"] = values.notna().sum(axis=1)
 
     # Второй по цене нужен как запасной вариант и как мера риска по цене.
@@ -47,7 +53,9 @@ def positions(table, prices, suppliers):
     has_second = second.notna().any(axis=1)
     rows["Второй поставщик"] = pd.NA
     rows.loc[has_second, "Второй поставщик"] = second[has_second].idxmin(axis=1)
-    rows["Цена второго, KRW"] = second.min(axis=1).round(0)
+    # Где второго поставщика нет, min по пустой строке дает None, а не NaN.
+    rows["Цена второго, KRW"] = pd.to_numeric(second.min(axis=1),
+                                              errors="coerce").round(0)
     rows["Второй дороже на, %"] = (
         (rows["Цена второго, KRW"] / rows["Цена, KRW/шт"] - 1) * 100).round(1)
     rows["Пометка"] = ""
@@ -58,7 +66,11 @@ def positions(table, prices, suppliers):
 
 def brand_plan(brands, df, suppliers):
     """План по брендам: где заказывать бренд целиком."""
-    catalog = df.groupby(["Бренд", "Поставщик"])["Штрихкод"].nunique().unstack(fill_value=0)
+    # Товар без штрихкода в сравнение цен не идет, но в ассортименте
+    # поставщика он есть — считаем такие позиции по названию.
+    sku = df["Штрихкод"].where(df["Штрихкод"].str.len() >= 8, df["Название EN"])
+    catalog = (df.assign(SKU=sku).groupby(["Бренд", "Поставщик"])["SKU"]
+               .nunique().unstack(fill_value=0))
     catalog = catalog.reindex(columns=suppliers, fill_value=0)
     leaders = brands.set_index("Бренд")
 
@@ -68,27 +80,46 @@ def brand_plan(brands, df, suppliers):
         if brand in leaders.index:
             record = leaders.loc[brand]
             supplier = record["Дешевле всех"]
+            # Победа на паре общих позиций ничего не значит, если у соперника
+            # весь бренд, а у победителя полторы позиции из ответа на заявку.
+            widest = present.idxmax()
+            thin = (record["Позиций в сравнении"] < FEW_POSITIONS
+                    and counts[supplier] * 2 < counts[widest])
+            second, gap = record["Второй по цене"], record["Второй дороже, % (корзина)"]
+            if thin:
+                # Мы уходим от того, кто дешевле: он и становится альтернативой,
+                # а разница меняет знак — у него те же позиции дешевле.
+                supplier = widest
+                second = record["Дешевле всех"]
+                gap = -gap if pd.notna(gap) and second != record["Второй по цене"] else gap
             rows.append({
                 "Бренд": brand,
                 "Заказывать у": supplier,
                 "SKU у него": int(counts[supplier]),
                 "SKU всего у всех": int(present.sum()),
+                "Доля ассортимента у него, %": round(
+                    counts[supplier] / present.sum() * 100),
                 "Поставщиков с брендом": int(len(present)),
                 "Сравнимых позиций": int(record["Позиций в сравнении"]),
                 "Покрытие лидера, %": record["Покрытие лидера, %"],
-                "Второй по цене": record["Второй по цене"],
-                "Второй дороже, %": record["Второй дороже, % (корзина)"],
+                "Второй по цене": second,
+                "Второй дороже, %": gap,
                 "Переплата, если брать не у лидера, руб":
                     record["Переплата, если брать не у лидера, руб"],
-                "Основание": "дешевле по сравнению цен",
+                "Основание": ("сравнить почти нечего, у него ассортимент шире"
+                              if thin else "дешевле по сравнению цен"),
             })
         else:
-            supplier = present.index[0]
+            # Цены сравнить не с чем, поэтому идем к тому, у кого бренд
+            # представлен шире: у второго может быть пара позиций из ответа.
+            supplier = present.idxmax()
             rows.append({
                 "Бренд": brand,
                 "Заказывать у": supplier,
-                "SKU у него": int(present.iloc[0]),
+                "SKU у него": int(present.max()),
                 "SKU всего у всех": int(present.sum()),
+                "Доля ассортимента у него, %": round(
+                    present.max() / present.sum() * 100),
                 "Поставщиков с брендом": int(len(present)),
                 "Сравнимых позиций": 0,
                 "Покрытие лидера, %": 100,
@@ -125,6 +156,30 @@ def supplier_plan(plan, buy, suppliers):
     return pd.DataFrame(rows).sort_values("SKU по плану брендов", ascending=False)
 
 
+def brands_by_supplier(plan):
+    """Кто какие бренды везет: список брендов под каждым поставщиком."""
+    rows = []
+    order = (plan.groupby("Заказывать у")["SKU у него"].sum()
+             .sort_values(ascending=False))
+    for supplier, total in order.items():
+        group = plan[plan["Заказывать у"] == supplier].sort_values(
+            "SKU у него", ascending=False)
+        rows.append({"Поставщик": supplier, "Бренд": f"всего брендов: {len(group)}",
+                     "SKU у него": int(total)})
+        for _, item in group.iterrows():
+            rows.append({
+                "Поставщик": "", "Бренд": item["Бренд"],
+                "SKU у него": int(item["SKU у него"]),
+                "Доля ассортимента у него, %": item["Доля ассортимента у него, %"],
+                "Кто еще возит": item["Второй по цене"],
+                "У него дороже, %": item["Второй дороже, %"],
+                "Переплата, если брать не у него, руб":
+                    item["Переплата, если брать не у лидера, руб"],
+                "Почему он": item["Основание"],
+            })
+    return pd.DataFrame(rows)
+
+
 def format_sheet(worksheet):
     worksheet.freeze_panes = "B2"
     for cell in worksheet[1]:
@@ -150,18 +205,21 @@ def format_sheet(worksheet):
                 row[0].number_format = fmt
 
 
-def main(country):
-    df = load(country)
+def main(country, offers=()):
+    df = with_offers(load(country), offers, country)
+    # Ассортимент считаем по всем позициям, включая те, где штрихкода нет.
+    catalog = with_offers(load(country, require_code=False), offers, country)
     suppliers = sorted(df["Поставщик"].unique())
     df, bad = split_conflicts(df)
     df, _ = unify_packs(df)
 
     table, prices = price_table(df, COLUMN)
     info = table[["Бренд", "Название EN", "Объем"]]
-    brands, _, _ = brand_stats(prices, info, suppliers)
+    rate = rub_per_unit(df["Валюта"].mode().iat[0], imported=country == "KR")
+    brands, _, _ = brand_stats(prices, info, suppliers, rate)
 
-    buy = positions(table, prices, suppliers)
-    plan = brand_plan(brands, df, suppliers)
+    buy = positions(table, prices, suppliers, rate)
+    plan = brand_plan(brands, catalog, suppliers)
     by_supplier = supplier_plan(plan, buy, suppliers)
 
     # В таблицу товаров подставляем рекомендацию по бренду: заказ обычно
@@ -183,6 +241,8 @@ def main(country):
     with pd.ExcelWriter(out_path) as writer:
         plan.to_excel(writer, sheet_name="ПЛАН ПО БРЕНДАМ", index=False)
         by_supplier.to_excel(writer, sheet_name="ПО ПОСТАВЩИКАМ", index=False)
+        brands_by_supplier(plan).to_excel(writer, sheet_name="КТО ЧТО ВЕЗЕТ",
+                                          index=False)
         buy.to_excel(writer, sheet_name="ЧТО ПОКУПАТЬ")
         check.to_excel(writer, sheet_name="НА СВЕРКУ")
         if not bad.empty:
@@ -219,4 +279,7 @@ def main(country):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Список закупа по брендам и товарам")
     parser.add_argument("--country", default="KR")
-    main(parser.parse_args().country)
+    parser.add_argument("--offer", action="append", default=[],
+                        help="ответ на заявку: ИМЯ=файл")
+    ns = parser.parse_args()
+    main(ns.country, [item.split("=", 1) for item in ns.offer])

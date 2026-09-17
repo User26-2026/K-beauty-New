@@ -293,6 +293,8 @@ BRAND_ALIASES = {
     "DERMAFACTORY": "DERMA FACTORY",
     "TONYMOLY": "TONY MOLY",
     "MAANYO": "MANYO",
+    "MEDI-PEEL": "MEDIPEEL",
+    "MEDI PEEL": "MEDIPEEL",
     "DR ALTHEA": "DR. ALTHEA",
     "VT COSMETICS": "VT",
     "AMORE PACIFIC": "AMORE",
@@ -592,6 +594,77 @@ def parse_file(path, supplier, country, currency):
     return unique, notes
 
 
+def brand_token(value):
+    return re.sub(r"[^A-Z0-9]", "", normalize_brand(str(value)).upper())
+
+
+# Копия чужой колонки видна по масштабу: совпадает не код-другой, а почти
+# весь список. Единичные расхождения — это разное написание бренда.
+COPIED_SHARE = 0.5
+COPIED_MIN = 20
+
+
+def drop_copied_barcodes(df):
+    """Убираем штрихкоды, скопированные из соседнего прайса того же поставщика.
+
+    В прайсе Papa Cosmetic по SKIN1004 стоят штрихкоды их же прайса
+    ROUND LAB: колонку скопировали целиком. Один код на два бренда ломает и
+    сведение брендов, и сравнение цен — чужой товар попадает в рейтинг как
+    свой. Коды убираем у того файла, чей бренд не подтверждают другие
+    поставщики: позиции остаются, но сводятся по названию.
+    """
+    if "Штрихкод" not in df:
+        return df, []
+    codes = df["Штрихкод"].fillna("").astype(str)
+    known = codes.str.len() >= 8
+    if not known.any():
+        return df, []
+    marks = df["Бренд"].map(brand_token)
+
+    # Кто как подписывает код: по одному голосу на поставщика.
+    votes = (pd.DataFrame({"code": codes[known], "mark": marks[known],
+                           "supplier": df.loc[known, "Поставщик"]})
+             .drop_duplicates(["code", "mark", "supplier"]))
+
+    files = {}
+    for (supplier, name), group in df[known].groupby(["Поставщик", "Файл"]):
+        files[(supplier, name)] = set(codes[group.index])
+
+    wrong = pd.Series(False, index=df.index)
+    for (supplier, name), mine in files.items():
+        twin = max(
+            (other for (owner, other_name), other in files.items()
+             if owner == supplier and other_name != name
+             for other in [other]),
+            key=lambda other: len(mine & other), default=None)
+        if twin is None:
+            continue
+        shared = mine & twin
+        if len(shared) < COPIED_MIN or len(shared) < COPIED_SHARE * len(mine):
+            continue
+        # Чужие голоса: что говорят про эти коды другие поставщики.
+        outside = votes[votes["code"].isin(shared) & (votes["supplier"] != supplier)]
+        if outside.empty:
+            continue
+        rows = df.index[known & (df["Поставщик"] == supplier) & (df["Файл"] == name)]
+        mine_mark = marks.loc[rows].mode()
+        if mine_mark.empty or mine_mark.iat[0] in set(outside["mark"]):
+            continue
+        wrong.loc[rows] = True
+
+    if not wrong.any():
+        return df, []
+    df = df.copy()
+    df.loc[wrong, "Примечание"] = (
+        df.loc[wrong, "Примечание"].fillna("").astype(str)
+        + " штрихкод из чужого прайса, убран").str.strip()
+    df.loc[wrong, "Штрихкод"] = None
+    counts = (df.loc[wrong].groupby(["Поставщик", "Файл"]).size()
+              .sort_values(ascending=False))
+    return df, [(f"{supplier} — {os.path.basename(name)}", count)
+                for (supplier, name), count in counts.items()]
+
+
 def main(paths, rate, usd, only_supplier):
     """Разбираем прайсы и складываем в одну таблицу по всем поставщикам."""
     if paths:
@@ -626,6 +699,12 @@ def main(paths, rate, usd, only_supplier):
         return
 
     df = pd.DataFrame(all_records)
+    df, copied = drop_copied_barcodes(df)
+    if copied:
+        print("\nШтрихкоды скопированы из чужого прайса, коды убраны:")
+        for name, count in copied:
+            print(f"   {name}: {count}")
+
     # Наценка поставщика к рекомендованной рознице — грубый ориентир по марже.
     df["MSRP/Закупка"] = (df["MSRP, KRW"] / df["Закупка, KRW"]).round(2)
     # Цену набора делим на число штук: сравнивать можно только штуку со штукой.

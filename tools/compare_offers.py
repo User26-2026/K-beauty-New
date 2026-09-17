@@ -22,7 +22,9 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import add_barcodes
 import name_match
+from parse_price_lists import normalize_brand
 from brand_names import same
 from check_customer_order import read_order
 from check_offer import read_offer
@@ -129,6 +131,71 @@ def sane(base, target, known, price):
             if ratio > PRICE_LIMIT:
                 return False
     return True
+
+
+def as_price_rows(pairs, known, country="KR", brand=None):
+    """Ответы на заявку в виде строк прайса.
+
+    Инвойсы в сводную таблицу прайсов не попадают, поэтому поставщик,
+    который ответил на заявку, в сравнении брендов не участвует. Штрихкод
+    в ответах стоит не везде — недостающий берем по названию из прайсов
+    того же бренда, но только при сопоставимой цене: рядом с банкой на 60
+    патчей у PETITFEE идет пробник «1 pairs».
+    """
+    if not pairs:
+        return pd.DataFrame()
+    pool = known.copy()
+    pool["Марка"] = (pool["Бренд"].astype(str).str.upper()
+                     .str.replace(r"[^A-Z0-9]", "", regex=True))
+    pool["Слова"] = pool["Название EN"].map(add_barcodes.words)
+    pool["Тон"] = pool["Название EN"].map(add_barcodes.tone)
+
+    rows = []
+    for name, path in pairs:
+        table = read_any(path)
+        if brand:
+            mask = (table["Бренд"].fillna("").astype(str).str.upper()
+                    .str.contains(brand.upper())
+                    | table["Товар"].fillna("").astype(str).str.upper()
+                    .str.contains(brand.upper()))
+            table = table[mask]
+        for _, item in table.iterrows():
+            mark = brand or item["Бренд"]
+            if not mark or pd.isna(item["Цена, KRW"]):
+                continue
+            code = str(item["Штрихкод"] or "")
+            if len(code) < 8:
+                code = guess_code(item["Товар"], item["Цена, KRW"], mark, pool)
+            if not code:
+                continue
+            rows.append({
+                "Поставщик": name, "Страна": country, "Валюта": "KRW",
+                # Бренд из инвойса приводим к общему написанию: иначе
+                # ETUDE HOUSE и ETUDE разойдутся на два бренда.
+                "Бренд": normalize_brand(str(mark).upper()), "Штрихкод": code,
+                "Название EN": item["Товар"], "Объем": None,
+                "Базис": "EXW", "Единица цены": "за шт", "Штук в упаковке": None,
+                "MSRP, KRW": None, "Закупка, KRW": item["Цена, KRW"],
+                "Цена за штуку, KRW": item["Цена, KRW"],
+                "Цена за штуку, руб": item["Цена, KRW"] * KRW_RUB,
+            })
+    if not rows:
+        return pd.DataFrame()
+    # Одну позицию поставщик мог прислать дважды — банкой и пробником.
+    return pd.DataFrame(rows).drop_duplicates(["Поставщик", "Штрихкод"])
+
+
+def guess_code(name, price, brand, pool):
+    """Штрихкод по названию, если цена сопоставима с прайсовой."""
+    if pool.empty:
+        return None
+    fits = [index for _, index in add_barcodes.candidates(name, brand, pool)
+            if pd.notna(pool.at[index, "Закупка, KRW"])
+            and pool.at[index, "Закупка, KRW"] > 0
+            and max(price, pool.at[index, "Закупка, KRW"])
+            / min(price, pool.at[index, "Закупка, KRW"]) <= PRICE_LIMIT]
+    codes = set(pool.loc[fits, "Штрихкод"])
+    return fits and len(codes) == 1 and pool.at[fits[0], "Штрихкод"] or None
 
 
 def read_rfq(path):
