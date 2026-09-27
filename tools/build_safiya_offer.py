@@ -1,8 +1,9 @@
 """Прайс SAFIYA по брендам и товарам.
 
-Лист на каждый бренд плюс своды. Основа — действующий B2B-прайс. Рядом
-ставим персональное предложение, которое компания дала знакомому, и
-публичный прайс: видно, сколько SAFIYA готова уступать с прайса и
+Лист на каждый бренд плюс своды. Основа — персональное предложение нам от
+25.08: по нему мы и покупаем, и оно шире прайса. Рядом ставим действующий
+B2B-прайс, предложение знакомому от 12.08 и публичную цену: видно, сколько
+SAFIYA уступила нам с прайса, лучше ли наши условия, чем у знакомого, и
 сколько мы выигрываем к публичной цене.
 
 Публичная цена идет с НДС 22%, прайсы в долларах — без НДС, поэтому к
@@ -24,11 +25,12 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from rates import USD_RUB
+from rates import SAFIYA_USD_RUB
 
 ROOT = "data/price_lists/safiya"
 B2B = f"{ROOT}/safiya_2026-09-01_b2b.xlsx"
-PERSONAL = f"{ROOT}/archive/safiya_2026-08-12_znakomomu.xlsx"
+PERSONAL = f"{ROOT}/archive/safiya_2026-08-25_personal.xlsx"
+FRIEND = f"{ROOT}/archive/safiya_2026-08-12_znakomomu.xlsx"
 PUBLIC = f"{ROOT}/official/safiya_2026-08-04_official.csv"
 TARGET = "outputs/SAFIYA_прайс_по_брендам.xlsx"
 VAT = 1.22
@@ -37,9 +39,10 @@ HEAD = PatternFill("solid", fgColor="1F3864")
 TOTAL = PatternFill("solid", fgColor="E2EFDA")
 WHITE = Font(color="FFFFFF", bold=True)
 
-COLUMNS = ["Наименование", "Объем", "Штрихкод", "Цена B2B, $", "Цена B2B, руб",
-           "Знакомому 12.08, $", "Дороже, чем знакомому, %", "Остаток на 12.08, шт",
-           "Публичная цена A, руб", "Дешевле публичной, %"]
+COLUMNS = ["Наименование", "Объем", "Штрихкод", "Наша цена, $", "Наша цена, руб",
+           "Прайс B2B, $", "Скидка к прайсу, %", "Знакомому 12.08, $",
+           "Мы дешевле знакомого, %", "Публичная цена A, руб",
+           "Дешевле публичной, %"]
 
 
 def read_b2b():
@@ -56,17 +59,30 @@ def read_b2b():
         elif code and code != "nan" and pd.isna(row["Цена, $"]):
             brand = code
     goods = pd.DataFrame(goods)
-    goods["Цена B2B, руб"] = (goods["Цена B2B, $"] * USD_RUB).round()
-    return goods
+    return goods.set_index("Штрихкод")[["Цена B2B, $"]]
 
 
 def read_personal():
+    """Предложение нам: бренд стоит в своей колонке у каждой строки."""
     table = pd.read_excel(PERSONAL, skiprows=4, header=None)
+    table.columns = ["Бренд", "Наименование", "Штрихкод", "Объем", "Наша цена, $"]
+    table = table.dropna(subset=["Наша цена, $", "Наименование"])
+    table["Штрихкод"] = table["Штрихкод"].astype(str).str.replace(r"\D", "", regex=True)
+    table["Наименование"] = table["Наименование"].astype(str).str.strip()
+    # Цены SAFIYA переводим по их курсу, а не по рыночному: разница курсов —
+    # это их скрытая наценка, и платим мы именно по их счету.
+    table["Наша цена, руб"] = (table["Наша цена, $"] * SAFIYA_USD_RUB).round()
+    return table.reset_index(drop=True)
+
+
+def read_friend():
+    """Предложение, которое та же компания дала знакомому в августе."""
+    table = pd.read_excel(FRIEND, skiprows=4, header=None)
     table.columns = ["Бренд", "Категория", "Наименование", "Штрихкод",
                      "Объем", "Остаток на 12.08, шт", "Знакомому 12.08, $"]
     table = table.dropna(subset=["Знакомому 12.08, $"])
     table["Штрихкод"] = table["Штрихкод"].astype(str).str.replace(r"\D", "", regex=True)
-    return table.set_index("Штрихкод")[["Знакомому 12.08, $", "Остаток на 12.08, шт"]]
+    return table.set_index("Штрихкод")[["Знакомому 12.08, $"]]
 
 
 def read_public():
@@ -76,25 +92,30 @@ def read_public():
 
 
 def build():
-    goods = read_b2b()
-    personal, public = read_personal(), read_public()
+    goods = read_personal()
+    public = read_public()
+    goods = goods.join(read_b2b(), on="Штрихкод").join(read_friend(), on="Штрихкод")
 
-    goods = goods.join(personal, on="Штрихкод")
-    goods["Дороже, чем знакомому, %"] = [
-        round(new / old * 100 - 100, 1) if pd.notna(old) else ""
-        for new, old in zip(goods["Цена B2B, $"], goods["Знакомому 12.08, $"])
+    # Скидка положительным числом: сколько процентов цены мы не платим.
+    goods["Скидка к прайсу, %"] = [
+        round(100 - our / base * 100, 1) if pd.notna(base) else ""
+        for our, base in zip(goods["Наша цена, $"], goods["Цена B2B, $"])
+    ]
+    goods["Мы дешевле знакомого, %"] = [
+        round(100 - our / base * 100, 1) if pd.notna(base) else ""
+        for our, base in zip(goods["Наша цена, $"], goods["Знакомому 12.08, $"])
     ]
     goods["Публичная цена A, руб"] = [public.get(code, "") for code in goods["Штрихкод"]]
-    # Скидка положительным числом: сколько процентов публичной цены мы не платим.
     goods["Дешевле публичной, %"] = [
         round(100 - price / base * 100, 1) if base else ""
-        for price, base in zip(goods["Цена B2B, руб"], goods["Публичная цена A, руб"])
+        for price, base in zip(goods["Наша цена, руб"], goods["Публичная цена A, руб"])
     ]
     goods["Без НДС, %"] = [
         round(100 - price / (base / VAT) * 100, 1) if base else ""
-        for price, base in zip(goods["Цена B2B, руб"], goods["Публичная цена A, руб"])
+        for price, base in zip(goods["Наша цена, руб"], goods["Публичная цена A, руб"])
     ]
-    return goods.fillna({"Знакомому 12.08, $": "", "Остаток на 12.08, шт": ""})
+    goods = goods.rename(columns={"Цена B2B, $": "Прайс B2B, $"})
+    return goods.fillna({"Прайс B2B, $": "", "Знакомому 12.08, $": ""})
 
 
 def sheet_name(brand):
@@ -152,50 +173,82 @@ def main():
     for brand, part in goods.groupby("Бренд", sort=True):
         summary.append([
             brand, len(part),
-            int(part["Цена B2B, руб"].mean()),
-            int(part["Цена B2B, руб"].min()),
-            int(part["Цена B2B, руб"].max()),
-            int((part["Знакомому 12.08, $"] != "").sum()),
-            median(part["Дороже, чем знакомому, %"]),
+            int(part["Наша цена, руб"].mean()),
+            int(part["Наша цена, руб"].min()),
+            int(part["Наша цена, руб"].max()),
+            int((part["Скидка к прайсу, %"] != "").sum()),
+            median(part["Скидка к прайсу, %"]),
+            median(part["Мы дешевле знакомого, %"]),
             int((part["Дешевле публичной, %"] != "").sum()),
             median(part["Дешевле публичной, %"]),
         ])
     итого = write(
         book.create_sheet("ИТОГО"),
         ["Бренд", "Позиций", "Средняя цена, руб", "Мин, руб", "Макс, руб",
-         "Есть в прайсе знакомому, поз.", "Дороже, чем знакомому, %",
-         "Есть в публичном, поз.", "Дешевле публичной, %"],
+         "Есть в прайсе B2B, поз.", "Скидка к прайсу, %",
+         "Мы дешевле знакомого, %", "Есть в публичном, поз.",
+         "Дешевле публичной, %"],
         summary,
-        [24, 9, 15, 11, 11, 14, 12, 14, 14],
-        ["ВСЕГО", len(goods), int(goods["Цена B2B, руб"].mean()),
-         int(goods["Цена B2B, руб"].min()), int(goods["Цена B2B, руб"].max()),
-         int((goods["Знакомому 12.08, $"] != "").sum()), median(goods["Дороже, чем знакомому, %"]),
+        [24, 9, 15, 11, 11, 14, 13, 14, 14, 14],
+        ["ВСЕГО", len(goods), int(goods["Наша цена, руб"].mean()),
+         int(goods["Наша цена, руб"].min()), int(goods["Наша цена, руб"].max()),
+         int((goods["Скидка к прайсу, %"] != "").sum()),
+         median(goods["Скидка к прайсу, %"]),
+         median(goods["Мы дешевле знакомого, %"]),
          int((goods["Дешевле публичной, %"] != "").sum()),
          median(goods["Дешевле публичной, %"])],
     )
     money(итого, "CDE")
-    scale(итого, "G", итого.max_row - 1, 0, 20, reverse=True)
-    scale(итого, "I", итого.max_row - 1, 0, 45)
+    scale(итого, "G", итого.max_row - 1, 0, 20)
+    scale(итого, "J", итого.max_row - 1, 0, 45)
 
-    рост = goods[goods["Дороже, чем знакомому, %"] != ""].sort_values("Дороже, чем знакомому, %", ascending=False)
+    скидка = goods[goods["Скидка к прайсу, %"] != ""].sort_values(
+        "Скидка к прайсу, %", ascending=False)
     лист = write(
-        book.create_sheet("ЦЕНА ЗНАКОМОМУ"),
-        ["Бренд", "Наименование", "Объем", "Штрихкод", "Знакомому 12.08, $",
-         "Прайс 01.09, $", "Дороже, чем знакомому, %"],
-        рост[["Бренд", "Наименование", "Объем", "Штрихкод",
-              "Знакомому 12.08, $", "Цена B2B, $", "Дороже, чем знакомому, %"]].values.tolist(),
+        book.create_sheet("СКИДКА К ПРАЙСУ"),
+        ["Бренд", "Наименование", "Объем", "Штрихкод", "Прайс B2B, $",
+         "Наша цена, $", "Скидка к прайсу, %"],
+        скидка[["Бренд", "Наименование", "Объем", "Штрихкод",
+                "Прайс B2B, $", "Наша цена, $", "Скидка к прайсу, %"]].values.tolist(),
         [18, 58, 12, 16, 12, 13, 12],
     )
     money(лист, "EF", "0.00")
-    scale(лист, "G", лист.max_row, 0, 20, reverse=True)
+    scale(лист, "G", лист.max_row, 0, 20)
+
+    знакомый = goods[goods["Мы дешевле знакомого, %"] != ""].sort_values(
+        "Мы дешевле знакомого, %")
+    лист = write(
+        book.create_sheet("ПРОТИВ ЦЕНЫ ЗНАКОМОГО"),
+        ["Бренд", "Наименование", "Объем", "Штрихкод", "Знакомому 12.08, $",
+         "Наша цена, $", "Мы дешевле знакомого, %"],
+        знакомый[["Бренд", "Наименование", "Объем", "Штрихкод",
+                  "Знакомому 12.08, $", "Наша цена, $",
+                  "Мы дешевле знакомого, %"]].values.tolist(),
+        [18, 58, 12, 16, 13, 13, 14],
+    )
+    money(лист, "EF", "0.00")
+    scale(лист, "G", лист.max_row, -5, 15)
+
+    # Персональное предложение шире прайса: эти позиции есть только в нем.
+    новые = goods[goods["Прайс B2B, $"] == ""].sort_values(["Бренд", "Наименование"])
+    лист = write(
+        book.create_sheet("НЕТ В ПРАЙСЕ B2B"),
+        ["Бренд", "Наименование", "Объем", "Штрихкод", "Наша цена, $",
+         "Наша цена, руб"],
+        новые[["Бренд", "Наименование", "Объем", "Штрихкод",
+               "Наша цена, $", "Наша цена, руб"]].values.tolist(),
+        [18, 58, 12, 16, 13, 14],
+    )
+    money(лист, "E", "0.00")
+    money(лист, "F")
 
     сверка = goods[goods["Дешевле публичной, %"] != ""].sort_values(
         "Дешевле публичной, %", ascending=False)
     лист = write(
         book.create_sheet("СКИДКА К ПУБЛИЧНОМУ"),
-        ["Бренд", "Наименование", "Объем", "Штрихкод", "Цена B2B, руб",
+        ["Бренд", "Наименование", "Объем", "Штрихкод", "Наша цена, руб",
          "Публичная цена A, руб", "Дешевле публичной, %", "Без НДС, %"],
-        сверка[["Бренд", "Наименование", "Объем", "Штрихкод", "Цена B2B, руб",
+        сверка[["Бренд", "Наименование", "Объем", "Штрихкод", "Наша цена, руб",
                 "Публичная цена A, руб", "Дешевле публичной, %",
                 "Без НДС, %"]].values.tolist(),
         [18, 58, 12, 16, 13, 15, 14, 12],
@@ -209,21 +262,27 @@ def main():
             book.create_sheet(sheet_name(brand)),
             COLUMNS,
             part[COLUMNS].values.tolist(),
-            [58, 12, 16, 12, 13, 12, 12, 13, 15, 14],
-            ["ИТОГО", f"позиций: {len(part)}", "", "",
-             int(part["Цена B2B, руб"].mean()), "", median(part["Дороже, чем знакомому, %"]), "", "",
+            [58, 12, 16, 12, 13, 12, 13, 13, 14, 15, 14],
+            ["ИТОГО", f"позиций: {len(part)}", "",
+             round(part["Наша цена, $"].mean(), 2),
+             int(part["Наша цена, руб"].mean()), "",
+             median(part["Скидка к прайсу, %"]), "",
+             median(part["Мы дешевле знакомого, %"]), "",
              median(part["Дешевле публичной, %"])],
         )
-        money(ws, "EI")
+        money(ws, "EJ")
         money(ws, "DF", "0.00")
-        scale(ws, "G", ws.max_row - 1, 0, 20, reverse=True)
-        scale(ws, "J", ws.max_row - 1, 0, 45)
+        scale(ws, "G", ws.max_row - 1, 0, 20)
+        scale(ws, "K", ws.max_row - 1, 0, 45)
 
     os.makedirs("outputs", exist_ok=True)
     book.save(TARGET)
     print(f"Брендов: {goods['Бренд'].nunique()}   позиций: {len(goods)}")
-    print(f"Дороже прайса знакомому от 12.08 на {median(goods['Дороже, чем знакомому, %'])}% "
-          f"по {(goods['Дороже, чем знакомому, %'] != '').sum()} позициям")
+    print(f"Скидка к прайсу B2B: {median(goods['Скидка к прайсу, %'])}% "
+          f"по {(goods['Скидка к прайсу, %'] != '').sum()} позициям")
+    print(f"Против цены знакомого: {median(goods['Мы дешевле знакомого, %'])}% "
+          f"по {(goods['Мы дешевле знакомого, %'] != '').sum()} позициям")
+    print(f"Нет в прайсе B2B: {(goods['Прайс B2B, $'] == '').sum()} позиций")
     print(f"Дешевле публичного прайса: {median(goods['Дешевле публичной, %'])}% "
           f"по {(goods['Дешевле публичной, %'] != '').sum()} позициям")
     print(f"Сохранено: {TARGET}")

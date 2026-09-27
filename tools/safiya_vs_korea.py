@@ -38,7 +38,8 @@ from supplier_brand_matrix import split_conflicts
 SRC = "outputs/prices_normalized.xlsx"
 ROOT = "data/price_lists/safiya"
 OFFERS = {
-    "Спец. предложение 12.08": f"{ROOT}/archive/safiya_2026-08-12_znakomomu.xlsx",
+    "Наше предложение 25.08": f"{ROOT}/archive/safiya_2026-08-25_personal.xlsx",
+    "Знакомому 12.08": f"{ROOT}/archive/safiya_2026-08-12_znakomomu.xlsx",
     "B2B-прайс 01.09": f"{ROOT}/safiya_2026-09-01_b2b.xlsx",
 }
 TARGET = "outputs/SAFIYA_против_Кореи.xlsx"
@@ -86,9 +87,13 @@ def korea():
 
 
 def read_personal(path):
+    """Персональное предложение. Форма менялась: в августовском файле есть
+    колонки категории и остатка, в сентябрьском — только бренд и цена."""
     table = pd.read_excel(path, skiprows=4, header=None)
-    table.columns = ["Бренд", "Категория", "Наименование", "Штрихкод",
-                     "Объем", "Остаток, шт", "Цена, $"]
+    names = (["Бренд", "Категория", "Наименование", "Штрихкод", "Объем",
+              "Остаток, шт", "Цена, $"] if table.shape[1] > 5 else
+             ["Бренд", "Наименование", "Штрихкод", "Объем", "Цена, $"])
+    table.columns = names[:table.shape[1]]
     return table.dropna(subset=["Цена, $"])
 
 
