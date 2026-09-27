@@ -16,7 +16,7 @@
 поэтому колонка «Состояние» заполняется руками при погрузке: тогда же,
 когда позицию берут в руки и кладут в ящик.
 
-Результат: outputs/marine_equipment/Отгрузка_учет_образец.xlsx
+Результат: outputs/marine_equipment/Отгрузка_Питер_учет.xlsx
 """
 
 import pathlib
@@ -494,7 +494,7 @@ def main():
     wb.move_sheet("Как заполнять", offset=-wb.index(wb["Как заполнять"]))
 
     OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / "Отгрузка_учет_образец.xlsx"
+    path = OUT / "Отгрузка_Питер_учет.xlsx"
     wb.save(path)
 
     known = sum(1 for r in go if r["Состояние"] in ("новый", "б/у"))
