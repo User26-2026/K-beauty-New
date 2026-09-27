@@ -482,7 +482,7 @@ def sheet_howto(wb):
 
 
 def main():
-    go, _, kg, _ = select()
+    go, _, _, kg, _ = select()
     last = START + len(go) - 1
 
     wb = Workbook()
