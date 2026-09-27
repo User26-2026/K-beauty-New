@@ -31,6 +31,7 @@ from build_marine_registry import SOURCES, parse  # noqa: E402
 from build_catalog_xlsx import group_of  # noqa: E402
 from build_weight_xlsx import unit_weight, du  # noqa: E402
 from build_container_plan import unit_volume  # noqa: E402
+from shipments_done import SHIPMENTS, cost, shipped_off  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
@@ -46,6 +47,14 @@ BRONZE_FILL = PatternFill("solid", fgColor="FCE4D6")
 SUB_FILL = PatternFill("solid", fgColor="D9E2F3")
 THIN = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+# Тариф транспортной компании — средневзвешенный по двум реальным
+# распискам от 24.09.2026: 183 137 руб за 2 250 кг. По отдельности
+# вышло 75 руб/кг на задвижках и 105 руб/кг на фильтрах.
+TK_RATE = sum(cost(s) for s in SHIPMENTS) / sum(s["kg"] for s in SHIPMENTS)
+# доля доставки в цене, выше которой везти транспортной компанией
+# невыгодно и позиция ждет следующего контейнера
+TK_LIMIT = 0.10
 
 # 25 тонн — предел загрузки 40-футового контейнера. Массы у нас
 # справочные, с погрешностью около трети, поэтому перед отправкой
@@ -106,6 +115,23 @@ def queue(r):
         # мелочью добиваем остаток: что не влезло, уедет следующим бортом
         return 5
     return 4
+
+
+def tk_cost(r):
+    """Во сколько встанет отправка этой позиции транспортной компанией."""
+    return r["вес"] * TK_RATE
+
+
+def channel(r):
+    """Чем отправлять то, что не влезло в контейнер. Дешевую тяжелую
+    арматуру транспортной компанией везти незачем — доставка съест
+    цену, такое ждет следующего контейнера."""
+    if not r["Сумма"]:
+        return "ждет контейнера, цены нет"
+    share = tk_cost(r) / r["Сумма"]
+    if share <= TK_LIMIT:
+        return "транспортной компанией"
+    return "ждет следующего контейнера"
 
 
 def hold(r):
@@ -308,6 +334,11 @@ def sheet_summary(wb, go, stay, held):
         ("Отложено: сталь и коробки", f"{len(held)} позиций",
          f"{sum(r['вес'] for r in held) / 1000:.1f} т, "
          f"{sum(r['Сумма'] for r in held) / 1e6:.1f} млн руб"),
+        ("Можно отправить ТК",
+         f"{len([r for r in stay if channel(r) == 'транспортной компанией'])}"
+         " позиций",
+         f"{sum(tk_cost(r) for r in stay if channel(r) == 'транспортной компанией') / 1000:.0f}"
+         f" тыс руб доставки по {TK_RATE:.0f} руб/кг"),
     ]
     for i, (label, value, note) in enumerate(facts):
         row = 4 + i
@@ -352,7 +383,7 @@ def sheet_summary(wb, go, stay, held):
 ITEM_COLS = ["№", "Едет", "Очередь", "Ярус", "Тип", "Диаметр",
              "Наименование", "Материал", "Штук", "Вес, кг", "Объем, м³",
              "Стоимость, руб", "Руб за кг", "Как паковать", "Локация",
-             "Почему не едет"]
+             "Почему не едет", "Чем отправляем", "Доставка ТК, руб"]
 
 
 def sheet_items(wb, rows, title, name):
@@ -374,7 +405,9 @@ def sheet_items(wb, rows, title, name):
                   r["Сумма"] or None,
                   round(r["Сумма"] / r["вес"]) if r["вес"] and r["Сумма"]
                   else None,
-                  pack_type(r), r["Локация"], r.get("Почему не едет", "")]
+                  pack_type(r), r["Локация"], r.get("Почему не едет", ""),
+                  "контейнер" if r["Едет"] == "да" else channel(r),
+                  None if r["Едет"] == "да" else round(tk_cost(r))]
         for i, v in enumerate(values, start=1):
             cell = ws.cell(row=row, column=i, value=v)
             cell.font = BASE
@@ -401,9 +434,12 @@ def sheet_items(wb, rows, title, name):
         cell.border = BORDER
         cell.number_format = "#,##0"
 
-    ws.auto_filter.ref = f"A{start}:P{last}"
+    for row in range(start + 1, last + 1):
+        ws.cell(row=row, column=18).number_format = "#,##0"
+    ws.auto_filter.ref = f"A{start}:R{last}"
     ws.freeze_panes = f"G{start + 1}"
-    widths(ws, [5, 8, 26, 15, 22, 11, 50, 22, 8, 11, 12, 15, 11, 34, 15, 32])
+    widths(ws, [5, 8, 26, 15, 22, 11, 50, 22, 8, 11, 12, 15, 11, 34, 15, 32,
+                26, 16])
     return ws
 
 
@@ -531,6 +567,14 @@ def select():
         rows.extend(parse(spec))
     for r in rows:
         r["Сумма"] = (r["Наличие"] or 0) * (r["Цена за ед., руб"] or 0)
+    # то, что уже уехало, в план больше не попадает
+    off = shipped_off()
+    for r in rows:
+        key = (r["Наименование"], r["Локация"])
+        if key in off and r["Наличие"]:
+            r["Наличие"] = max(0, r["Наличие"] - off[key])
+            r["Сумма"] = r["Наличие"] * (r["Цена за ед., руб"] or 0)
+
     live = [r for r in rows if (r["Наличие"] or 0) > 0]
     for r in live:
         r["Группа продажи"] = group_of(r)
