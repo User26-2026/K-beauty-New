@@ -454,7 +454,9 @@ def sheet_packing(wb, go):
     return ws
 
 
-def main():
+def select():
+    """Что едет и что остается. Отбор нужен и здесь, и в файле учета
+    отгрузки, поэтому вынесен отдельно."""
     rows = []
     for spec in SOURCES:
         rows.extend(parse(spec))
@@ -484,6 +486,11 @@ def main():
         else:
             r["Едет"] = "нет"
             stay.append(r)
+    return go, stay, kg, m3
+
+
+def main():
+    go, stay, kg, m3 = select()
 
     wb = Workbook()
     wb.remove(wb.active)
