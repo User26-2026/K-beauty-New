@@ -37,6 +37,7 @@ from supplier_brand_matrix import split_conflicts
 
 SRC = "outputs/prices_normalized.xlsx"
 ROOT = "data/price_lists/safiya"
+STOCK = "data/stock_costs/Остатки_18.09.2026.xlsx"
 OFFERS = {
     "Наше предложение 25.08": f"{ROOT}/archive/safiya_2026-08-25_personal.xlsx",
     "Знакомому 12.08": f"{ROOT}/archive/safiya_2026-08-12_znakomomu.xlsx",
@@ -235,6 +236,26 @@ def main(import_cost):
                     "Корея EXW, руб", "Наценка к Корее, %", "Замечание"]].values.tolist(),
               [18, 56, 15, 16, 10, 13, 13, 26])
 
+    # Главный лист: то, ради чего сравнение и делается, — позиции, которые
+    # у SAFIYA дешевле, чем обошлись бы нам своим ввозом из Кореи.
+    label, path = next(iter(OFFERS.items()))
+    table = compare(read_offer(path), best, import_cost)
+    выгодно = table[(table["Замечание"] == "") & (table["К своему импорту, %"] < 0)]
+    выгодно = выгодно.sort_values("К своему импорту, %")
+    columns = ["Бренд", "Наименование", "Объем", "Штрихкод", "Цена, $",
+               "Цена SAFIYA, руб", "Своим импортом, руб", "К своему импорту, %",
+               "Корея, поставщик"]
+    ws = write(book.create_sheet("БРАТЬ У НИХ"), columns,
+               выгодно[columns].values.tolist(),
+               [18, 56, 16, 15, 10, 15, 16, 15, 15],
+               ["ИТОГО", f"позиций: {len(выгодно)}", "", "", "",
+                int(выгодно["Цена SAFIYA, руб"].sum()),
+                int(выгодно["Своим импортом, руб"].sum()),
+                round(выгодно["К своему импорту, %"].median(), 1), ""])
+    money(ws, "FG")
+    money(ws, "E", "0.00")
+    scale(ws, "H", ws.max_row - 1, -30, 0)
+
     ws = write(book.create_sheet("ИТОГО"),
                ["Прайс SAFIYA", "Позиций", "Сверено с Кореей",
                 "Наценка к Корее, %", "К своему импорту, %", "Дешевле нашего импорта, поз."],
@@ -242,6 +263,7 @@ def main(import_cost):
     scale(ws, "D", ws.max_row, 0, 150)
     scale(ws, "E", ws.max_row, -20, 80)
     book.move_sheet("ИТОГО", -(len(book.sheetnames) - 1))
+    book.move_sheet("БРАТЬ У НИХ", -(len(book.sheetnames) - 2))
 
     os.makedirs("outputs", exist_ok=True)
     book.save(TARGET)
