@@ -55,7 +55,7 @@ SHIPMENTS = [
         ],
         items=[
             dict(name="Фильтр забортной воды Ду300", unit="шт", qty=2,
-                 condition="", registry="Фильтр забортной воды Ду 300",
+                 condition="Б/у", registry="Фильтр забортной воды Ду 300",
                  location="Фойе"),
         ],
     ),
