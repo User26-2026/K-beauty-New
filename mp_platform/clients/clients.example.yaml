@@ -1,0 +1,53 @@
+# Реестр клиентов платформы. Скопируй в clients.yaml (он в .gitignore).
+# Токены НЕ пишем сюда напрямую — ссылаемся на переменные окружения ${VAR}.
+# Для каждого клиента своя изоляция данных и свои ограничители.
+
+clients:
+  - id: korotich            # внутренний id клиента (папка данных, логи)
+    name: "Коротич (мой магазин)"
+    active: true
+    marketplaces:
+      wb:
+        token_env: WB_TOKEN_KOROTICH      # имя переменной окружения с токеном
+      ozon:
+        client_id_env: OZON_CLIENT_ID_KOROTICH
+        api_key_env: OZON_API_KEY_KOROTICH
+    # Режим по каждой задаче: auto (полный автомат) | suggest (ИИ предлагает) | off
+    automation:
+      ads:     auto
+      seo:     suggest        # публикацию контента — через подтверждение
+      pricing: auto
+      stock:   auto
+    # Ограничители (guardrails) — рамки, за которые автомат не выходит
+    guardrails:
+      pricing:
+        min_roi_pct: 30         # не опускать цену ниже ROI 30%
+        max_price_change_pct: 15 # менять цену за раз не больше чем на 15%
+      ads:
+        max_drr_pct: 20          # выше — резать/пауза
+        max_bid_change_pct: 20   # менять ставку не больше 20% за прогон
+        daily_budget_cap: 50000  # потолок дневных расходов на рекламу, ₽
+      stock:
+        low_stock_days: 14       # сигнал на поставку
+    notify:
+      tg_chat_env: TG_CHAT_KOROTICH
+
+  # Шаблон для нового клиента — скопируй блок и поменяй id/имена переменных
+  # - id: client2
+  #   name: "Клиент 2"
+  #   active: true
+  #   marketplaces:
+  #     wb: { token_env: WB_TOKEN_CLIENT2 }
+  #     ozon: { client_id_env: OZON_CLIENT_ID_CLIENT2, api_key_env: OZON_API_KEY_CLIENT2 }
+  #   automation: { ads: suggest, seo: suggest, pricing: suggest, stock: auto }
+  #   guardrails:
+  #     pricing: { min_roi_pct: 30, max_price_change_pct: 10 }
+  #     ads: { max_drr_pct: 18, max_bid_change_pct: 15, daily_budget_cap: 30000 }
+  #     stock: { low_stock_days: 21 }
+  #   notify: { tg_chat_env: TG_CHAT_CLIENT2 }
+
+# Глобальные настройки платформы
+platform:
+  ai_model: claude-sonnet-5-5     # модель для рутинных задач (дешевле Opus)
+  ai_model_heavy: claude-opus-5-5 # для сложного анализа
+  dry_run_default: false          # false = автозадачи реально исполняются (в рамках guardrails)

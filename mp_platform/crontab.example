@@ -1,0 +1,13 @@
+# Расписание платформы на сервере (Hetzner). crontab -e → вставить.
+SHELL=/bin/bash
+PROJECT=/opt/k-beauty
+PY=/opt/k-beauty/.venv/bin/python
+
+# Остатки — каждые 2 часа (все клиенты)
+0 */2 * * * cd $PROJECT && $PY -m mp_platform.runner all stock >> logs/platform.log 2>&1
+# Реклама — 06:00 и 18:00 UTC
+0 6,18 * * * cd $PROJECT && $PY -m mp_platform.runner all ads >> logs/platform.log 2>&1
+# Ценообразование — ежедневно 05:00 UTC
+0 5 * * * cd $PROJECT && $PY -m mp_platform.runner all pricing >> logs/platform.log 2>&1
+# SEO — ежедневно 04:30 UTC (генерация, публикация по подтверждению)
+30 4 * * * cd $PROJECT && $PY -m mp_platform.runner all seo >> logs/platform.log 2>&1

@@ -6,3 +6,7 @@ outputs_tmp/
 ~$*.xlsx
 .env
 tools/wb_api/__pycache__/
+
+# Платформа
+mp_platform/clients/clients.yaml
+data/platform/*.db
