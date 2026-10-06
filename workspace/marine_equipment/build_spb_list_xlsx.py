@@ -46,6 +46,7 @@ GROUP_FILL = PatternFill("solid", fgColor="D9E2F3")
 MARK_FILL = PatternFill("solid", fgColor="FFF2CC")
 WARN_FILL = PatternFill("solid", fgColor="FCE4D6")
 GONE_FILL = PatternFill("solid", fgColor="E2E2E2")
+NODRAW_FILL = PatternFill("solid", fgColor="FFFF00")
 THIN = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
@@ -85,7 +86,7 @@ COLUMNS = [
     ("Ду", 8),
     ("Ру", 8),
     ("Наименование", 54),
-    ("Обозначение", 22),
+    ("Чертеж", 24),
     ("Состояние", 11),
     ("Выделено", 26),
     ("Вес 1 шт, кг", 11),
@@ -272,9 +273,10 @@ def sheet_main(wb, rows):
     ws["A1"] = "Остатки по питерскому списку на 30.09.2026"
     ws["A1"].font = TITLE
     ws["A2"] = ("Приложения 2 и 3 сведены вместе. Внутри группы — от "
-                "меньшего диаметра к большему. Желтым помечены титан, "
-                "высокое давление, котельная арматура, педальные и "
-                "электромагнитные клапаны.")
+                "меньшего диаметра к большему. Чертеж стоит напротив "
+                "каждой позиции; где его нет, ячейка желтая — впишите "
+                "руками. Оранжевым помечены титан, высокое давление, "
+                "котельная арматура, педальные и электромагнитные.")
     ws["A2"].font = NOTE
 
     start = 4
@@ -319,6 +321,9 @@ def sheet_main(wb, rows):
                     cell.number_format = "#,##0.0"
                 if i in (10, 11, 12):
                     cell.number_format = "#,##0"
+            if not r["Обозначение"]:
+                # чертеж вписываем руками: по нему ищет покупатель
+                ws.cell(row=row, column=6).fill = NODRAW_FILL
             if r["Выделено"]:
                 ws.cell(row=row, column=8).fill = MARK_FILL
             if r["Расхождение"]:
@@ -403,13 +408,14 @@ def sheet_marks(wb, rows):
     ws["A1"].font = TITLE
     ws["A2"] = ("Высоким давлением считаем Ру от 100. Котельная — "
                 "паровой клапан, сигнальные предохранительные и "
-                "водоуказательная колонка. Эти позиции стоят дороже "
-                "обычных и спрашивают их отдельно.")
+                "водоуказательная колонка. Оранжевым в колонке «Кол-во "
+                "факт» — то, что менеджер не пересчитала.")
     ws["A2"].font = NOTE
 
-    cols = ["Признак", "Группа", "Ду", "Ру", "Наименование", "Обозначение",
-            "Состояние", "Кол-во факт", "Вес 1 шт, кг", "Общий вес, кг",
-            "Цена по договору", "Ориентир реализации"]
+    cols = ["Признак", "Группа", "Ду", "Ру", "Наименование", "Чертеж",
+            "Состояние", "Кол-во по приложению", "Кол-во факт",
+            "Вес 1 шт, кг", "Общий вес, кг", "Цена по договору",
+            "Ориентир реализации"]
     for i, h in enumerate(cols, start=1):
         ws.cell(row=4, column=i, value=h)
     head(ws, 4, len(cols))
@@ -436,19 +442,25 @@ def sheet_marks(wb, rows):
             row += 1
             values = [r["Выделено"], r["Группа"], r["Ду"], r["Ру"],
                       r["Наименование"], r["Обозначение"], r["Состояние"],
-                      r["Кол-во факт"], r["Вес 1 шт, кг"],
-                      r["Общий вес, кг"], r["Цена по договору"],
-                      r["Ориентир реализации"]]
+                      r["Кол-во по приложению"], r["Кол-во факт"],
+                      r["Вес 1 шт, кг"], r["Общий вес, кг"],
+                      r["Цена по договору"], r["Ориентир реализации"]]
             for i, v in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=i, value=v)
                 cell.font = BASE
                 cell.border = BORDER
                 cell.alignment = Alignment(vertical="top",
                                            wrap_text=(i in (1, 5)))
-                if i in (9, 10):
+                if i in (10, 11):
                     cell.number_format = "#,##0.0"
+                if i in (8, 9):
+                    cell.number_format = "#,##0"
+            if not r["Обозначение"]:
+                ws.cell(row=row, column=6).fill = NODRAW_FILL
+            if r["Кол-во факт"] is None:
+                ws.cell(row=row, column=9).fill = WARN_FILL
 
-    widths(ws, [26, 22, 8, 8, 52, 22, 11, 11, 11, 12, 16, 18])
+    widths(ws, [26, 22, 8, 8, 52, 24, 11, 14, 11, 11, 12, 16, 18])
     ws.freeze_panes = "E5"
     return ws
 
@@ -461,7 +473,7 @@ def sheet_issues(wb, rows):
                 "и фактом, пометки менеджера и строки с нулевым весом.")
     ws["A2"].font = NOTE
 
-    cols = ["Что не так", "Группа", "Наименование", "Обозначение",
+    cols = ["Что не так", "Группа", "Наименование", "Чертеж",
             "Кол-во по приложению", "Кол-во факт", "Расхождение",
             "Вес 1 шт, кг", "Общий вес, кг", "Примечание"]
     for i, h in enumerate(cols, start=1):
@@ -507,6 +519,48 @@ def sheet_issues(wb, rows):
     return ws
 
 
+def sheet_nodraw(wb, rows):
+    """Позиции без чертежа: их вписывают руками.
+
+    Покупатель ищет арматуру по номеру чертежа, а не по названию.
+    Без чертежа позицию не подобрать и не подтвердить взаимозаменяемость.
+    """
+    ws = wb.create_sheet("Без чертежа")
+    ws["A1"] = "Позиции без чертежа — вписать"
+    ws["A1"].font = TITLE
+    ws["A2"] = ("Покупатель ищет по номеру чертежа. Желтые ячейки "
+                "заполняем сами: чертеж обычно выбит на корпусе или "
+                "на бирке.")
+    ws["A2"].font = NOTE
+
+    cols = ["№", "Группа", "Ду", "Ру", "Наименование", "Чертеж — вписать",
+            "Состояние", "Кол-во факт", "Вес 1 шт, кг", "Лист"]
+    for i, h in enumerate(cols, start=1):
+        ws.cell(row=4, column=i, value=h)
+    head(ws, 4, len(cols), height=30)
+
+    items = [r for r in rows if not r["Обозначение"]]
+    items.sort(key=lambda r: (GROUPS.index(r["Группа"]), sort_key(r)))
+    row = 4
+    for n, r in enumerate(items, start=1):
+        row += 1
+        values = [n, r["Группа"], r["Ду"], r["Ру"], r["Наименование"],
+                  None, r["Состояние"], r["Кол-во факт"],
+                  r["Вес 1 шт, кг"], r["Лист"]]
+        for i, v in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=i, value=v)
+            cell.font = BASE
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=(i == 5))
+            if i in (8, 9):
+                cell.number_format = "#,##0.0"
+        ws.cell(row=row, column=6).fill = NODRAW_FILL
+
+    widths(ws, [5, 24, 8, 8, 54, 26, 12, 12, 12, 10])
+    ws.freeze_panes = "E5"
+    return ws
+
+
 def main():
     rows = read()
 
@@ -515,6 +569,7 @@ def main():
     sheet_main(wb, rows)
     sheet_groups(wb, rows)
     sheet_marks(wb, rows)
+    sheet_nodraw(wb, rows)
     sheet_issues(wb, rows)
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -535,6 +590,9 @@ def main():
               f"{sum(r['Кол-во факт'] or 0 for r in items):>6.0f} шт "
               f"{sum(r['Общий вес, кг'] or 0 for r in items):>9,.0f} кг"
               .replace(",", " "))
+    print()
+    print(f"  без чертежа: {len([r for r in rows if not r['Обозначение']])}"
+          " позиций")
     print()
     for key in ("титан", "высокое давление", "котельная", "педальный",
                 "электромагнитный"):
