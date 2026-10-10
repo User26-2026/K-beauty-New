@@ -209,6 +209,19 @@ def collect():
     return block_a, block_b, rest, kg, m3
 
 
+def plural(n, one, few, many):
+    """Позиция, позиции, позиций — по правилам русского счета."""
+    n = int(n)
+    if n % 100 in range(11, 15):
+        return many
+    last = n % 10
+    if last == 1:
+        return one
+    if last in (2, 3, 4):
+        return few
+    return many
+
+
 def head(ws, row, ncols, height=40):
     for c in range(1, ncols + 1):
         cell = ws.cell(row=row, column=c)
@@ -360,25 +373,52 @@ def sheet_summary(wb, a, b, rest, kg, m3):
     return ws
 
 
+# порядок групп: сначала то, чего больше всего и что спрашивают чаще
+GROUP_ORDER = [
+    "клапан штуцерный",
+    "клапан фланцевый",
+    "клинкет (задвижка)",
+    "фильтр забортной воды",
+    "кингстон",
+    "головка вентиляционная",
+    "колонка указательная",
+    "захлопка",
+    "коробка клапанная",
+    "кран",
+    "стакан переборочный",
+    "клапан пусковой",
+    "клапан редукционный",
+    "клапан паровой",
+    "клапан предохранительный",
+    "клапан электромагнитный",
+    "клапан педальный",
+    "клапан пожарный",
+    "клапан быстрозапорный",
+    "эжектор",
+    "привод к задвижке",
+    "блины к клинкету",
+    "сетка к фильтру",
+    "клапан без описания — уточнить",
+]
+
 COLS = [
     ("№", 5),
-    ("Блок", 24),
-    ("Ярус", 15),
-    ("Тип", 22),
-    ("Ду", 7),
-    ("Ру", 7),
     ("Наименование", 50),
     ("Чертеж", 22),
+    ("Ду", 7),
+    ("Ру", 7),
     ("Состояние", 12),
-    ("Выделено", 22),
-    ("Штук", 8),
+    ("ШТУК", 9),
     ("Вес ед., кг", 11),
     ("Вес всего, кг", 12),
     ("Объем, куб. м", 12),
-    ("Цена", 14),
-    ("Ориентир реализации", 16),
+    ("Выделено", 22),
+    ("Блок", 24),
+    ("Ярус", 15),
     ("Как паковать", 32),
     ("Откуда", 22),
+    ("Цена", 14),
+    ("Ориентир реализации", 16),
 ]
 
 
@@ -395,48 +435,75 @@ def sheet_items(wb, name, title, items, note=""):
         ws.cell(row=start, column=i, value=h)
     head(ws, start, len(COLS))
 
-    items = sorted(items, key=lambda r: (tier(asrow(r)), r["Блок"],
-                                         -r["вес"]))
+    by_group = defaultdict(list)
+    for r in items:
+        by_group[item_kind(asrow(r))].append(r)
+    order = [g for g in GROUP_ORDER if g in by_group]
+    order += [g for g in sorted(by_group) if g not in GROUP_ORDER]
+
     row = start
-    for n, r in enumerate(items, start=1):
+    n = 0
+    for group in order:
+        rows_in = sorted(by_group[group],
+                         key=lambda r: (r["Ду"] or 9999,
+                                        r["Наименование"]))
         row += 1
-        fake = asrow(r)
-        values = [n, r["Блок"], TIERS[tier(fake)][0], item_kind(fake),
-                  r["Ду"], r["Ру"], r["Наименование"], r["Чертеж"],
-                  r["Состояние"], r["Выделено"], r["Штук"],
-                  round(r["вес_ед"], 1), round(r["вес"]),
-                  round(r["объем"], 3), r["Цена"], r["Ориентир"],
-                  pack_type(fake), r["Откуда"]]
-        for i, v in enumerate(values, start=1):
-            cell = ws.cell(row=row, column=i, value=v)
-            cell.font = BASE
+        qty = sum(r["Штук"] for r in rows_in)
+        kg = sum(r["вес"] for r in rows_in)
+        ws.cell(row=row, column=1,
+                value=f"{group.upper()} — {len(rows_in)} "
+                      f"{plural(len(rows_in), 'позиция', 'позиции', 'позиций')}"
+                      f", {qty:.0f} шт, {kg:,.0f} кг".replace(",", " "))
+        for c in range(1, len(COLS) + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = GROUP_FILL
+            cell.font = SUB
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top",
-                                       wrap_text=(i in (2, 7, 17)))
-            if i in (12, 13):
-                cell.number_format = "#,##0.0" if i == 12 else "#,##0"
-            if i == 14:
-                cell.number_format = "#,##0.000"
-        ws.cell(row=row, column=2).fill = (A_FILL if r["Блок"] == BLOCK_A
-                                           else B_FILL)
-        if r["Выделено"]:
-            ws.cell(row=row, column=10).fill = MARK_FILL
-        if not r["Чертеж"]:
-            ws.cell(row=row, column=8).fill = NODRAW_FILL
+        for r in rows_in:
+            row += 1
+            n += 1
+            fake = asrow(r)
+            values = [n, r["Наименование"], r["Чертеж"], r["Ду"], r["Ру"],
+                      r["Состояние"], r["Штук"], round(r["вес_ед"], 1),
+                      round(r["вес"]), round(r["объем"], 3),
+                      r["Выделено"], r["Блок"], TIERS[tier(fake)][0],
+                      pack_type(fake), r["Откуда"], r["Цена"],
+                      r["Ориентир"]]
+            for i, v in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=i, value=v)
+                cell.font = BASE
+                cell.border = BORDER
+                cell.alignment = Alignment(vertical="top",
+                                           wrap_text=(i in (2, 12, 14)))
+                if i == 7:
+                    cell.font = BOLD
+                if i == 8:
+                    cell.number_format = "#,##0.0"
+                if i == 9:
+                    cell.number_format = "#,##0"
+                if i == 10:
+                    cell.number_format = "#,##0.000"
+            ws.cell(row=row, column=12).fill = (A_FILL
+                                                if r["Блок"] == BLOCK_A
+                                                else B_FILL)
+            if r["Выделено"]:
+                ws.cell(row=row, column=11).fill = MARK_FILL
+            if not r["Чертеж"]:
+                ws.cell(row=row, column=3).fill = NODRAW_FILL
 
     last = row
     row += 1
-    ws.cell(row=row, column=7, value="ИТОГО").font = BOLD
-    for col in (11, 13, 14):
+    ws.cell(row=row, column=2, value="ИТОГО").font = BOLD
+    for col in (7, 9, 10):
         letter = get_column_letter(col)
         cell = ws.cell(row=row, column=col,
                        value=f"=SUM({letter}{start + 1}:{letter}{last})")
         cell.font = BOLD
         cell.border = BORDER
-        cell.number_format = "#,##0" if col != 14 else "#,##0.0"
+        cell.number_format = "#,##0" if col != 10 else "#,##0.0"
 
     ws.auto_filter.ref = f"A{start}:{get_column_letter(len(COLS))}{last}"
-    ws.freeze_panes = f"G{start + 1}"
+    ws.freeze_panes = f"C{start + 1}"
     widths(ws, [w for _, w in COLS])
     return ws
 
