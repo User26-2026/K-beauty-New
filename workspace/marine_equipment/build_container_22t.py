@@ -35,7 +35,9 @@ from build_shipment_spb import (  # noqa: E402
     FLOOR, PACKING, TIERS, is_bronze, is_titanium, item_kind, pack_type,
     tier,
 )
-from build_spb_list_xlsx import read as read_spb  # noqa: E402
+from build_spb_list_xlsx import (  # noqa: E402
+    GROUPS, group_of, read as read_spb,
+)
 from build_weight_xlsx import du, unit_weight as ref_weight  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
@@ -272,22 +274,25 @@ def sheet_summary(wb, a, b, rest, kg, m3):
         row += 1
 
     row += 1
-    ws.cell(row=row, column=1, value="Что едет, по типам").font = SUB
+    ws.cell(row=row, column=1, value="Что едет, по группам").font = SUB
     row += 1
-    for i, h in enumerate(["Тип", "Позиций", "Штук", "Вес, кг",
+    for i, h in enumerate(["Группа", "Позиций", "Штук", "Вес, кг",
                            "Объем, куб. м", "Доля веса"], start=1):
         ws.cell(row=row, column=i, value=h)
     head(ws, row, 6, height=24)
 
     agg = defaultdict(lambda: [0, 0, 0.0, 0.0])
     for r in a + b:
-        x = agg[item_kind(asrow(r))]
+        x = agg[group_of(r["Наименование"])]
         x[0] += 1
         x[1] += r["Штук"]
         x[2] += r["вес"]
         x[3] += r["объем"]
     first = row + 1
-    for k, (p, u, w, v) in sorted(agg.items(), key=lambda kv: -kv[1][2]):
+    ordered = [g for g in GROUPS if g in agg]
+    ordered += [g for g in sorted(agg) if g not in GROUPS]
+    for k in ordered:
+        p, u, w, v = agg[k]
         row += 1
         for i, val in enumerate([k, p, u, round(w), round(v, 1), w / kg],
                                 start=1):
@@ -373,34 +378,9 @@ def sheet_summary(wb, a, b, rest, kg, m3):
     return ws
 
 
-# порядок групп: сначала то, чего больше всего и что спрашивают чаще
-GROUP_ORDER = [
-    "клапан штуцерный",
-    "клапан фланцевый",
-    "клинкет (задвижка)",
-    "фильтр забортной воды",
-    "кингстон",
-    "головка вентиляционная",
-    "колонка указательная",
-    "захлопка",
-    "коробка клапанная",
-    "кран",
-    "стакан переборочный",
-    "клапан пусковой",
-    "клапан редукционный",
-    "клапан паровой",
-    "клапан предохранительный",
-    "клапан электромагнитный",
-    "клапан педальный",
-    "клапан пожарный",
-    "клапан быстрозапорный",
-    "эжектор",
-    "привод к задвижке",
-    "блины к клинкету",
-    "сетка к фильтру",
-    "клапан без описания — уточнить",
-]
-
+# группы и их порядок берем те же, что в списке остатков: от мелкой
+# арматуры к крупной. Один разрез на оба файла, чтобы не сверять
+# вручную два разных деления
 COLS = [
     ("№", 5),
     ("Наименование", 50),
@@ -437,9 +417,9 @@ def sheet_items(wb, name, title, items, note=""):
 
     by_group = defaultdict(list)
     for r in items:
-        by_group[item_kind(asrow(r))].append(r)
-    order = [g for g in GROUP_ORDER if g in by_group]
-    order += [g for g in sorted(by_group) if g not in GROUP_ORDER]
+        by_group[group_of(r["Наименование"])].append(r)
+    order = [g for g in GROUPS if g in by_group]
+    order += [g for g in sorted(by_group) if g not in GROUPS]
 
     row = start
     n = 0
@@ -450,10 +430,13 @@ def sheet_items(wb, name, title, items, note=""):
         row += 1
         qty = sum(r["Штук"] for r in rows_in)
         kg = sum(r["вес"] for r in rows_in)
+        # разделитель тысяч ставим отдельно: в названии группы есть
+        # запятая, и общий replace ее бы съел
+        kg_text = f"{kg:,.0f}".replace(",", " ")
         ws.cell(row=row, column=1,
-                value=f"{group.upper()} — {len(rows_in)} "
+                value=f"{group} — {len(rows_in)} "
                       f"{plural(len(rows_in), 'позиция', 'позиции', 'позиций')}"
-                      f", {qty:.0f} шт, {kg:,.0f} кг".replace(",", " "))
+                      f", {qty:.0f} шт, {kg_text} кг")
         for c in range(1, len(COLS) + 1):
             cell = ws.cell(row=row, column=c)
             cell.fill = GROUP_FILL

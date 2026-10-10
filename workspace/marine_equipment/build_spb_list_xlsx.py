@@ -341,9 +341,10 @@ def sheet_main(wb, rows):
         row += 1
         qty = sum(r["Кол-во факт"] or 0 for r in items)
         kg = sum(r["Общий вес, кг"] or 0 for r in items)
+        kg_text = f"{kg:,.0f}".replace(",", " ")
         ws.cell(row=row, column=1,
                 value=f"{group} — {len(items)} позиций, {qty:.0f} шт, "
-                      f"{kg:,.0f} кг".replace(",", " "))
+                      f"{kg_text} кг")
         for c in range(1, len(COLUMNS) + 1):
             cell = ws.cell(row=row, column=c)
             cell.fill = GROUP_FILL
