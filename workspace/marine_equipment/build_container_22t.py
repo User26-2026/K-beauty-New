@@ -273,6 +273,7 @@ def sheet_summary(wb, a, b, rest, kg, m3):
         x[1] += r["Штук"]
         x[2] += r["вес"]
         x[3] += r["объем"]
+    first = row + 1
     for k, (p, u, w, v) in sorted(agg.items(), key=lambda kv: -kv[1][2]):
         row += 1
         for i, val in enumerate([k, p, u, round(w), round(v, 1), w / kg],
@@ -284,6 +285,17 @@ def sheet_summary(wb, a, b, rest, kg, m3):
                 cell.number_format = "#,##0"
             if i == 6:
                 cell.number_format = "0.0%"
+    row += 1
+    ws.cell(row=row, column=1, value="ИТОГО").font = BOLD
+    for col in range(2, 7):
+        letter = get_column_letter(col)
+        cell = ws.cell(row=row, column=col,
+                       value=f"=SUM({letter}{first}:{letter}{row - 1})")
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.number_format = "0.0%" if col == 6 else "#,##0"
+        if col == 5:
+            cell.number_format = "#,##0.0"
 
     row += 2
     ws.cell(row=row, column=1, value="Укладка снизу вверх").font = SUB
@@ -302,6 +314,7 @@ def sheet_summary(wb, a, b, rest, kg, m3):
         cell.border = BORDER
         cell.fill = GROUP_FILL
         cell.alignment = Alignment(vertical="top", wrap_text=(i in (2, 3)))
+    first = row + 1
     for t in sorted(TIERS):
         row += 1
         label, what, board = TIERS[t]
@@ -313,6 +326,13 @@ def sheet_summary(wb, a, b, rest, kg, m3):
             cell.alignment = Alignment(vertical="top", wrap_text=(i in (2, 3)))
             if i == 4:
                 cell.number_format = "#,##0"
+    row += 1
+    ws.cell(row=row, column=1, value="ИТОГО").font = BOLD
+    cell = ws.cell(row=row, column=4,
+                   value=f"=SUM(D{first}:D{row - 1})")
+    cell.font = BOLD
+    cell.border = BORDER
+    cell.number_format = "#,##0"
 
     row += 2
     for text in [
