@@ -1,0 +1,20 @@
+# Пример расписания для сервера (Hetzner). Установить: crontab -e, вставить строки.
+# Пути поправь под свой сервер. Логи пишутся в logs/.
+# Все времена — UTC (на сервере обычно UTC). МСК = UTC+3.
+
+# Переменные окружения для cron
+SHELL=/bin/bash
+PROJECT=/opt/k-beauty
+PY=/opt/k-beauty/.venv/bin/python
+
+# Ozon: остатки — каждые 2 часа (не прозевать out-of-stock под НГ)
+0 */2 * * * cd $PROJECT && $PY -m tools.automation.run_all stocks >> logs/stocks.log 2>&1
+
+# Ozon: кластеры — раз в сутки в 05:30 UTC (08:30 МСК)
+30 5 * * * cd $PROJECT && $PY -m tools.automation.run_all clusters >> logs/clusters.log 2>&1
+
+# WB: анализ рекламы — каждый день в 06:00 и 18:00 UTC
+0 6,18 * * * cd $PROJECT && $PY -m tools.automation.run_all ads >> logs/ads.log 2>&1
+
+# Полный прогон раз в сутки ночью + коммит свежих выгрузок в git (если нужно)
+0 1 * * * cd $PROJECT && $PY -m tools.automation.run_all all >> logs/all.log 2>&1 && git add data/ && git commit -m "auto: данные $(date +\%F)" && git push
