@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="899" height="2220" viewBox="0 0 899 2220">
-<rect width="899" height="2220" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="899" height="2260" viewBox="0 0 899 2260">
+<rect width="899" height="2260" fill="#ffffff"/>
 <g transform="translate(0,0)">
-<rect width="899" height="1110" fill="#ffffff"/>
+<rect width="899" height="1130" fill="#ffffff"/>
 <text x="70" y="60" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#1F3864" text-anchor="start" font-weight="bold">Контейнер 1 из двух: двадцатифутовый, Владивосток — Петербург</text>
 <text x="70" y="76" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#1F3864" text-anchor="start" font-weight="bold">Вид сбоку, разрез по длине</text>
 <text x="70" y="96" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">Внутри 5.90 x 2.39 м. Масштаб честный: где пусто на рисунке, там пусто и в контейнере</text>
@@ -72,9 +72,10 @@
 <text x="70" y="980" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Во Владивостоке не остается ничего</text>
 <text x="70" y="1000" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Ящик не выше 0,91 м, иначе второй ярус не встает под потолок</text>
 <text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 24 штук по 4 м, 0.48 куб. м, 337 кг</text>
+<text x="70" y="1040" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Мест под ящики: 16 — 4 над клинкетами и 12 на свободном полу, везде по два яруса</text>
 </g>
-<g transform="translate(0,1110)">
-<rect width="899" height="1110" fill="#ffffff"/>
+<g transform="translate(0,1130)">
+<rect width="899" height="1130" fill="#ffffff"/>
 <text x="70" y="60" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#1F3864" text-anchor="start" font-weight="bold">Контейнер 2 из двух: двадцатифутовый, Владивосток — Петербург</text>
 <text x="70" y="76" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#1F3864" text-anchor="start" font-weight="bold">Вид сбоку, разрез по длине</text>
 <text x="70" y="96" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">Внутри 5.90 x 2.39 м. Масштаб честный: где пусто на рисунке, там пусто и в контейнере</text>
@@ -144,5 +145,6 @@
 <text x="70" y="980" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Во Владивостоке не остается ничего</text>
 <text x="70" y="1000" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Ящик не выше 0,91 м, иначе второй ярус не встает под потолок</text>
 <text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 24 штук по 4 м, 0.47 куб. м, 332 кг</text>
+<text x="70" y="1040" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Мест под ящики: 16 — 8 над клинкетами и 8 на свободном полу, везде по два яруса</text>
 </g>
 </svg>

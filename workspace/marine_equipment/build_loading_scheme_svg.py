@@ -33,7 +33,9 @@ FORTY = dict(L=12.032, W=2.352, H=2.393, m3=67.2, kg=26_000,
              title="Сорокафутовый контейнер")
 TWENTY = dict(L=5.898, W=2.352, H=2.393, m3=BOX20_M3, kg=BOX20_KG,
               title="Двадцатифутовый контейнер")
-for _b in (FORTY, TWENTY):
+TWENTY27 = dict(L=5.898, W=2.352, H=2.393, m3=33.0, kg=27_000,
+                title="Усиленный двадцатифутовый, 27 т")
+for _b in (FORTY, TWENTY, TWENTY27):
     _b["area"] = _b["L"] * _b["W"]
 BOX_L, BOX_W, BOX_H = 1.2, 1.0, 0.91
 BOARD = 0.025
@@ -223,9 +225,15 @@ def top_view(p, x0, y0):
             out.append(rect(free_x + i * BOX_L * PX + 1,
                             y0 + j * BOX_W * PX + 1,
                             BOX_L * PX - 2, BOX_W * PX - 2, BOX1))
-    out.append(text(free_x + n_free * BOX_L * PX / 2, y0 + h / 2 + 5,
-                    f"ящики на полу: {n_free} ряда по 2 = {n_free * 2} мест "
-                    "в ярус", 13, "#1f3a28", "middle", "bold"))
+    if n_free:
+        out.append(text(free_x + n_free * BOX_L * PX / 2, y0 + h / 2 + 5,
+                        f"ящики на полу: {n_free} ряда по 2 = "
+                        f"{n_free * 2} мест в ярус", 13, "#1f3a28",
+                        "middle", "bold"))
+    else:
+        out.append(text(free_x + (w - gl) / 2, y0 + h / 2 + 5,
+                        "на полу места нет, ящики идут на клинкеты",
+                        12, MUTED, "middle"))
 
     out.append(line(x0, y0 + h + 16, x0 + gl, y0 + h + 16, INK, 1.2))
     out.append(text(x0 + gl / 2, y0 + h + 32,
@@ -257,7 +265,16 @@ def legend(p, x0, y0):
         y += 24
     y += 6
     boards = p["kg"] / 1000 * 0.035 / (4.0 * 0.20 * 0.025)
-    for label in [
+    # мест под ящики: над клинкетами два яруса, на свободном полу тоже два
+    over = int(p["gate_len"] / BOX_L) * 2 * 2
+    free = int((p["L"] - p["gate_len"]) / BOX_L) * 2 * 2
+    places = over + free
+    extra = []
+    if p["box_count"] > places:
+        extra.append(f"МЕСТ НЕ ХВАТАЕТ: ящиков {p['box_count']}, а встает "
+                     f"{places} ({over} над клинкетами и {free} на полу). "
+                     "Разница — это объем, которого в корпусе нет")
+    for label in extra + [
         f"Всего в контейнере: {p['items']} позиций, {p['units']:.0f} штук, "
         f"{p['kg'] / 1000:.2f} т из {p['kg_lim'] / 1000:.0f}, "
         f"{p['m3']:.1f} из {p['m3_lim']:.1f} куб. м",
@@ -267,8 +284,11 @@ def legend(p, x0, y0):
         f"Доска: {boards:.0f} штук по 4 м, "
         f"{p['kg'] / 1000 * 0.035:.2f} куб. м, "
         f"{p['kg'] / 1000 * 0.035 * 700:.0f} кг",
+        f"Мест под ящики: {places} — {over} над клинкетами и {free} на "
+        "свободном полу, везде по два яруса",
     ]:
-        out.append(text(x0, y, "— " + label, 12, MUTED))
+        color = "#9c2b2b" if label.startswith("МЕСТ НЕ ХВАТАЕТ") else MUTED
+        out.append(text(x0, y, "— " + label, 12, color))
         y += 20
     return "\n".join(out), y - y0
 
@@ -344,6 +364,18 @@ def main():
               f"{pl['gate_area']:.1f} кв. м, ящиков {pl['box_count']}, "
               f"{pl['kg'] / 1000:.2f} т, {pl['m3']:.1f} куб. м")
     save(OUT / "Схема_загрузки_2х20ф.svg", blocks)
+
+    # вариант 3: один усиленный двадцатифутовый на 27 тонн
+    from build_container_27t import collect27
+    items, left, kg27, m327 = collect27()
+    p27 = plan(TWENTY27, items, sum(r["вес"] for r in left),
+               "Загрузка усиленного двадцатифутового, 27 т, "
+               "Владивосток — Петербург")
+    p27["kg_lim"], p27["m3_lim"] = TWENTY27["kg"], TWENTY27["m3"]
+    save(OUT / "Схема_загрузки_20ф_27т.svg", [draw(p27)])
+    print(f"усиленный 27 т: клинкеты {p27['gate_units']:.0f} шт на "
+          f"{p27['gate_area']:.1f} кв. м, ящиков {p27['box_count']}, "
+          f"{p27['kg'] / 1000:.2f} т, {p27['m3']:.1f} куб. м")
 
 
 if __name__ == "__main__":
