@@ -66,7 +66,9 @@ LIMIT_M3 = 33
 # нельзя — доска бэушная, без рамного бруса по углам.
 BOX_KG = 600
 BOX_M3 = 0.9
-BOX_SIZE = "1200 x 1000 x 1000 мм, на поддоне"
+BOX_SIZE = "1200 x 1000 x 910 мм, на поддоне"
+# пол двадцатифутового 5,90 х 2,35 м: ящиков 1,2 х 1,0 влезает 11 в ярус
+BOX_PER_LAYER = 11
 
 FILTERS = re.compile(r"фильтр.*(заборт|заборн)|сетка на фильтр", re.I)
 
@@ -568,6 +570,22 @@ def sheet_boxes(wb, items):
     if cur["строки"]:
         boxes.append(cur)
 
+    # тяжелое вниз, легкое наверх: самые тяжелые ящики в нижний ярус,
+    # фильтры всегда сверху — они и легкие, и мятся первыми
+    def box_weight(box):
+        filters = any(group_of(r["Наименование"]) == "Фильтры забортной воды"
+                      for r in box["строки"])
+        return (1 if filters else 0, -box["вес"])
+
+    boxes.sort(key=box_weight)
+    for i, box in enumerate(boxes):
+        if i < BOX_PER_LAYER:
+            box["ярус"] = "Нижний ярус ящиков"
+        elif i < 2 * BOX_PER_LAYER:
+            box["ярус"] = "Верхний ярус ящиков"
+        else:
+            box["ярус"] = "МЕСТА НЕТ — разложить или оставить"
+
     row = 4
     facts = [
         ("Ящиков собрать", f"{len(boxes)} шт", BOX_SIZE),
@@ -580,7 +598,14 @@ def sheet_boxes(wb, items):
          "в ящики не кладем"),
         ("Поддонов под ящики", f"{len(boxes)} шт",
          "по одному на ящик, плюс запас на бой"),
+        ("Мест под ящики в контейнере", f"{2 * BOX_PER_LAYER} шт",
+         f"{BOX_PER_LAYER} в ярус, два яруса поверх настила"),
     ]
+    extra = len(boxes) - 2 * BOX_PER_LAYER
+    if extra > 0:
+        facts.append(("Ящиков сверх мест", f"{extra} шт",
+                      "содержимое разложить по остальным или оставить "
+                      "на второй борт"))
     for label, value, note in facts:
         ws.cell(row=row, column=1, value=label).font = BOLD
         ws.cell(row=row, column=2, value=value).font = BOLD
@@ -588,8 +613,8 @@ def sheet_boxes(wb, items):
         row += 1
 
     row += 1
-    cols = ["Ящик №", "Что внутри", "Наименование", "Чертеж", "Ду",
-            "Штук", "Вес, кг", "Объем, куб. м"]
+    cols = ["Ящик №", "Куда ставить", "Что внутри", "Наименование",
+            "Чертеж", "Ду", "Штук", "Вес, кг", "Объем, куб. м"]
     for i, h in enumerate(cols, start=1):
         ws.cell(row=row, column=i, value=h)
     head(ws, row, len(cols), height=28)
@@ -598,36 +623,37 @@ def sheet_boxes(wb, items):
         groups = sorted({group_of(r["Наименование"]) for r in box["строки"]})
         row += 1
         ws.cell(row=row, column=1, value=f"ЯЩИК {n}")
-        ws.cell(row=row, column=2, value=", ".join(groups))
-        ws.cell(row=row, column=6,
+        ws.cell(row=row, column=2, value=box["ярус"])
+        ws.cell(row=row, column=3, value=", ".join(groups))
+        ws.cell(row=row, column=7,
                 value=sum(r["Штук"] for r in box["строки"]))
-        ws.cell(row=row, column=7, value=round(box["вес"]))
-        ws.cell(row=row, column=8, value=round(box["объем"], 2))
+        ws.cell(row=row, column=8, value=round(box["вес"]))
+        ws.cell(row=row, column=9, value=round(box["объем"], 2))
         for c in range(1, len(cols) + 1):
             cell = ws.cell(row=row, column=c)
             cell.fill = GROUP_FILL
             cell.font = SUB
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=(c == 2))
-            if c == 7:
+            cell.alignment = Alignment(vertical="top", wrap_text=(c == 3))
+            if c == 8:
                 cell.number_format = "#,##0"
         for r in box["строки"]:
             row += 1
-            values = [None, group_of(r["Наименование"]), r["Наименование"],
-                      r["Чертеж"], r["Ду"], r["Штук"], round(r["вес"]),
-                      round(r["объем"], 3)]
+            values = [None, None, group_of(r["Наименование"]),
+                      r["Наименование"], r["Чертеж"], r["Ду"], r["Штук"],
+                      round(r["вес"]), round(r["объем"], 3)]
             for i, v in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=i, value=v)
                 cell.font = BASE
                 cell.border = BORDER
                 cell.alignment = Alignment(vertical="top",
-                                           wrap_text=(i in (2, 3)))
-                if i == 7:
-                    cell.number_format = "#,##0"
+                                           wrap_text=(i in (3, 4)))
                 if i == 8:
+                    cell.number_format = "#,##0"
+                if i == 9:
                     cell.number_format = "#,##0.000"
             if not r["Чертеж"]:
-                ws.cell(row=row, column=4).fill = NODRAW_FILL
+                ws.cell(row=row, column=5).fill = NODRAW_FILL
 
     row += 2
     ws.cell(row=row, column=1, value="Что учесть по таре").font = SUB
@@ -652,8 +678,8 @@ def sheet_boxes(wb, items):
         ws.row_dimensions[row].height = 30
         row += 1
 
-    widths(ws, [12, 30, 48, 20, 8, 9, 11, 13])
-    ws.freeze_panes = "C5"
+    widths(ws, [12, 22, 28, 46, 20, 8, 9, 11, 13])
+    ws.freeze_panes = "D5"
     return ws
 
 
