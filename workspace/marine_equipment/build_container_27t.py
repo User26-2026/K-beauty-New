@@ -36,6 +36,8 @@ from build_shipment_spb import (  # noqa: E402
     FLOOR, PACKING, TIERS, pack_type, tier,
 )
 from build_spb_list_xlsx import GROUPS, group_of  # noqa: E402
+from build_shipment_spb import item_kind  # noqa: E402
+import gate_geometry as gg  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
@@ -363,38 +365,50 @@ def sheet_stowage(wb, items, kg):
             if i in (5, 6):
                 cell.number_format = "#,##0.00"
 
-    # сколько мест под ящики реально есть: над клинкетами и на полу
-    gate_area = sum(((( r["Ду"] or 100) / 1000 + 0.20) ** 2) * r["Штук"]
-                    for r in items
-                    if tier(asrow(r)) == 1)
-    gate_len = min(gate_area / FLOOR_W, FLOOR_L)
-    over = int(gate_len / CRATE_L) * 2 * 2
-    free = int((FLOOR_L - gate_len) / CRATE_L) * 2 * 2
+    # раскладка клинкетов по рядам и места под ящики
+    counts = defaultdict(int)
+    for r in items:
+        if (tier(asrow(r)) == 1
+                and item_kind(asrow(r)) == "клинкет (задвижка)"):
+            counts[int(r["Ду"] or 0)] += int(r["Штук"])
+    grows = gg.rows_of(counts)
+    layers = gg.place(grows)
+    gate_len = gg.gate_length(counts)
+    free, over, h_gates, free_l = gg.crate_places(counts)
+    gate_area = min(gate_len, FLOOR_L) * FLOOR_W
     places = over + free
     nbox = crates(tkg[3])
 
     row += 2
-    ws.cell(row=row, column=1, value="Места под ящики").font = SUB
+    ws.cell(row=row, column=1, value="Клинкеты и места под ящики").font = SUB
     row += 1
     for label, value, note in [
-        ("Клинкеты занимают пола, кв. м", round(gate_area, 1),
-         f"{gate_area / FLOOR_AREA * 100:.0f}% пола, полоса "
-         f"{gate_len:.2f} м"),
-        ("Мест над клинкетами", over, "два яруса ящиков"),
+        ("Рядов клинкетов", len(grows),
+         "задвижка лежит на боку, шток горизонтально поперек"),
+        ("Длина пола под клинкетами, м", round(gate_len, 2),
+         f"пол контейнера {FLOOR_L} м"),
+        ("ЯРУСОВ КЛИНКЕТОВ", layers,
+         "больше одного — значит задвижка ляжет на задвижку"),
+        ("Высота под клинкеты с досками, м", round(h_gates, 2),
+         f"до потолка остается {HEIGHT - h_gates:.2f} м"),
+        ("Свободного пола, м", round(free_l, 2),
+         f"ряд ящиков просит {CRATE_L} м"),
+        ("Мест над клинкетами", over, "сколько ярусов ящиков встает сверху"),
         ("Мест на свободном полу", free, "два яруса ящиков"),
         ("ВСЕГО мест", places, ""),
         ("Нужно под мелочь", nbox, f"ящиков по {CRATE_KG} кг"),
         ("Не хватает мест", max(0, nbox - places),
          "если не ноль — столько ящиков в корпус не встает, это и есть "
          "нехватка объема"),
-        ("Ящиков встанет на клинкеты", min(nbox, over),
-         "на свободном полу мест нет, вся мелочь идет поверх задвижек"),
+        ("Ящиков встанет на клинкеты", max(0, nbox - free),
+         "все, чему не хватило свободного пола"),
         ("Вес поверх клинкетов, кг",
-         round(min(nbox, over) * (tkg[3] / nbox) + tkg[4]),
+         round(max(0, nbox - free) * (tkg[3] / nbox) + tkg[4]),
          "ящики плюс фильтры и титан на них"),
         ("Нагрузка на клинкеты, кг/кв. м",
-         round((min(nbox, over) * (tkg[3] / nbox) + tkg[4]) / gate_area),
-         "в двух двадцатифутовых выходит втрое меньше"),
+         round((max(0, nbox - free) * (tkg[3] / nbox) + tkg[4]) / gate_area),
+         "в двух двадцатифутовых выходит вдвое меньше, и там клинкеты "
+         "лежат в один ярус"),
     ]:
         ws.cell(row=row, column=1, value=label).font = BASE
         cell = ws.cell(row=row, column=2, value=value)

@@ -32,9 +32,10 @@ from build_container_spb import (  # noqa: E402
     COLS, asrow, collect, plural,
 )
 from build_shipment_spb import (  # noqa: E402
-    FLOOR, PACKING, TIERS, pack_type, tier,
+    FLOOR, PACKING, TIERS, item_kind, pack_type, tier,
 )
 from build_spb_list_xlsx import GROUPS, group_of  # noqa: E402
+import gate_geometry as gg  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
@@ -86,9 +87,12 @@ TOL_M3 = 0.3
 # цена одного ящика, которому не хватило места на полу и который
 # встанет на клинкеты. Это главный риск по сохранности, поэтому дорого
 PLACE_COST = 10.0
+# цена второго яруса клинкетов: задвижка на задвижку. Самое дорогое,
+# чего мы избегаем — нижний ряд тогда держит и второй ряд, и всю мелочь
+LAYER_COST = 300.0
 # ящик на поддоне 1200 x 1000: поперек встают два (2,0 м при ширине
 # 2,352), вдоль каждый ряд занимает 1,2 м
-CRATE_L, CRATE_W = 1.2, 1.0
+CRATE_L, CRATE_W = gg.CRATE_L, gg.CRATE_W
 
 # цена одного дробления позиции между контейнерами. Дробить удобно
 # расчету и неудобно бригаде: на каждую такую позицию надо считать
@@ -153,18 +157,26 @@ def split():
     boxes = {n: {} for n in range(1, BOXES + 1)}
     load = {n: [0.0, 0.0] for n in range(1, BOXES + 1)}
     tkg = {n: defaultdict(float) for n in range(1, BOXES + 1)}
-    # площадь пола под клинкетами нижнего яруса, по габариту корпуса
-    garea = {n: 0.0 for n in range(1, BOXES + 1)}
+    # клинкеты нижнего яруса по диаметрам и занятая ими длина пола
+    gcount = {n: defaultdict(int) for n in range(1, BOXES + 1)}
+    glen = {n: 0.0 for n in range(1, BOXES + 1)}
     rest = []
 
-    def foot(r):
-        """Площадь пола под одной задвижкой, кв. м."""
-        return ((r["Ду"] or 100) / 1000 + 0.20) ** 2
+    def rows_for(c, du):
+        """Сколько рядов занимают c задвижек этого диаметра."""
+        a = gg.across(du)
+        return -(-c // a) if c > 0 else 0
 
-    def places(area):
-        """Сколько ящиков встает на свободный пол, в два яруса."""
-        gl = min(area / FLOOR_W, FLOOR_L)
-        return int((FLOOR_L - gl) / CRATE_L) * 2 * 2
+    def add_gate(n, du, qty):
+        """Пересчитать длину пола под клинкетами при изменении count."""
+        c = gcount[n][du]
+        glen[n] += (rows_for(c + qty, du) - rows_for(c, du)) * gg.depth(du)
+        gcount[n][du] = c + qty
+
+    def places(n, d_len=0.0):
+        """Мест под ящики на свободном полу, в два яруса."""
+        free = FLOOR_L - (glen[n] + d_len)
+        return int(free / CRATE_L) * 2 * 2 if free > 0 else 0
 
     def need(kg):
         """Сколько ящиков нужно под мелочь такого веса."""
@@ -181,8 +193,8 @@ def split():
         load[n][1] += qty * r["объем_ед"]
         t = tier(asrow(r))
         tkg[n][t] += qty * r["вес_ед"]
-        if t == 1:
-            garea[n] += qty * foot(r)
+        if t == 1 and item_kind(asrow(r)) == "клинкет (задвижка)":
+            add_gate(n, int(r["Ду"] or 0), qty)
 
     def take(n, r, qty):
         k = key_of(r)
@@ -197,8 +209,8 @@ def split():
         load[n][1] -= qty * r["объем_ед"]
         t = tier(asrow(r))
         tkg[n][t] -= qty * r["вес_ед"]
-        if t == 1:
-            garea[n] -= qty * foot(r)
+        if t == 1 and item_kind(asrow(r)) == "клинкет (задвижка)":
+            add_gate(n, int(r["Ду"] or 0), -qty)
 
     # первый проход: тяжелое вперед, каждую позицию в тот контейнер,
     # где этого яруса пока меньше
@@ -222,14 +234,19 @@ def split():
     def splits():
         return sum(1 for k in boxes[1] if k in boxes[2])
 
-    def on_gates(n, d_area=0.0, d_kg3=0.0):
-        """Сколько ящиков не влезает на пол и встанет на клинкеты."""
-        return max(0, need(tkg[n][3] + d_kg3) - places(garea[n] + d_area))
+    def risk(n, d_len=0.0, d_kg3=0.0):
+        """Цена риска по нижнему ярусу: второй ярус задвижек и ящики,
+        которым не хватило пола и которые встанут на клинкеты."""
+        c = 0.0
+        if glen[n] + d_len > FLOOR_L:
+            c += LAYER_COST
+        c += PLACE_COST * max(0, need(tkg[n][3] + d_kg3) - places(n, d_len))
+        return c
 
     def cost():
         c = sum(((tkg[1][t] - tkg[2][t]) / TOL) ** 2 for t in TIERS)
         c += ((load[1][1] - load[2][1]) / TOL_M3) ** 2
-        c += PLACE_COST * sum(on_gates(n) for n in boxes)
+        c += sum(risk(n) for n in boxes)
         return c + SPLIT_COST * splits()
 
     def after(r, qty, a, b):
@@ -245,10 +262,17 @@ def split():
             c += (g / TOL) ** 2
         gv = (load[1][1] - load[2][1]) - sign * 2 * dv
         c += (gv / TOL_M3) ** 2
-        # ящики на клинкетах после переноса
-        da = qty * foot(r) if t == 1 else 0.0
+        # нижний ярус после переноса
+        gate = t == 1 and item_kind(asrow(r)) == "клинкет (задвижка)"
+        du = int(r["Ду"] or 0)
+        if gate:
+            ca, cb = gcount[a][du], gcount[b][du]
+            dla = (rows_for(ca - qty, du) - rows_for(ca, du)) * gg.depth(du)
+            dlb = (rows_for(cb + qty, du) - rows_for(cb, du)) * gg.depth(du)
+        else:
+            dla = dlb = 0.0
         dk = qty * r["вес_ед"] if t == 3 else 0.0
-        c += PLACE_COST * (on_gates(a, -da, -dk) + on_gates(b, da, dk))
+        c += risk(a, dla, -dk) + risk(b, dlb, dk)
         # дробление платное: переносим часть штук — позиция окажется
         # в обоих контейнерах, переносим все — перестанет
         k = key_of(r)
@@ -601,9 +625,9 @@ def sheet_pressure(wb, boxes, tkg):
     ws["A2"].font = NOTE
 
     row = 4
-    cols = ["Контейнер", "Клинкеты нижнего яруса, кг",
-            "Пол под ними, кв. м", "Полоса вдоль контейнера, м",
-            "Мест под ящики на свободном полу", "Ящиков всего",
+    cols = ["Контейнер", "Клинкеты нижнего яруса, кг", "Рядов",
+            "Длина пола под ними, м", "Ярусов клинкетов",
+            "Свободного пола, м", "Мест под ящики на полу", "Ящиков всего",
             "Ящиков встанет на клинкеты", "Вес поверх клинкетов, кг",
             "Нагрузка, кг/кв. м", "Запас по бронзе"]
     for i, h in enumerate(cols, start=1):
@@ -612,10 +636,16 @@ def sheet_pressure(wb, boxes, tkg):
 
     data = []
     for n in sorted(boxes):
-        ga = sum((((r["Ду"] or 100) / 1000 + 0.20) ** 2) * r["Штук"]
-                 for r in boxes[n] if tier(asrow(r)) == 1)
-        gl = min(ga / FLOOR_W, FLOOR_L)
-        free = int((FLOOR_L - gl) / CRATE_L) * 2 * 2
+        counts = defaultdict(int)
+        for r in boxes[n]:
+            if (tier(asrow(r)) == 1
+                    and item_kind(asrow(r)) == "клинкет (задвижка)"):
+                counts[int(r["Ду"] or 0)] += int(r["Штук"])
+        grows = gg.rows_of(counts)
+        layers = gg.place(grows)
+        gl = gg.gate_length(counts)
+        free, over, h_gates, free_l = gg.crate_places(counts)
+        area = min(gl, FLOOR_L) * FLOOR_W
         kg3 = tkg[n][3]
         nbox = max(1, int(kg3 / BOX_LIMIT_KG)
                    + (1 if kg3 % BOX_LIMIT_KG else 0))
@@ -623,12 +653,13 @@ def sheet_pressure(wb, boxes, tkg):
         # на клинкетах оказываются ящики, которым не хватило пола, плюс
         # верхний ярус фильтров и титана ложится на эти же ящики
         kg_top = on_gates * (kg3 / nbox) + tkg[n][4]
-        press = kg_top / ga if ga else 0
+        press = kg_top / area if area else 0
         mpa = press * 9.81 / 1e6
-        data.append((n, ga, gl, free, nbox, on_gates, kg_top, press, mpa))
+        data.append((n, area, gl, free, nbox, on_gates, kg_top, press, mpa))
         row += 1
-        values = [NAMES[n], round(tkg[n][1]), round(ga, 1), round(gl, 2),
-                  free, nbox, on_gates, round(kg_top), round(press),
+        values = [NAMES[n], round(tkg[n][1]), len(grows), round(gl, 2),
+                  layers, round(free_l, 2), free, nbox, on_gates,
+                  round(kg_top), round(press),
                   f"{BRONZE_MPA / mpa:,.0f} раз".replace(",", " ")
                   if mpa else ""]
         for i, v in enumerate(values, start=1):
@@ -636,16 +667,28 @@ def sheet_pressure(wb, boxes, tkg):
             cell.font = BASE
             cell.border = BORDER
             cell.fill = ONE_FILL if n == 1 else TWO_FILL
-            if i in (2, 5, 6, 8, 9):
+            if i in (2, 3, 7, 8, 9, 10, 11):
                 cell.number_format = "#,##0"
-            if i in (3, 4):
+            if i in (4, 6):
                 cell.number_format = "#,##0.00"
-            if i == 7 and v:
+            if i == 5 and v > 1:
+                cell.fill = WARN_FILL
+            if i == 9 and v:
                 cell.fill = WARN_FILL
 
     row += 2
     ws.cell(row=row, column=1,
             value="Сравнение с одним усиленным на 27 тонн").font = SUB
+    row += 1
+    cell = ws.cell(row=row, column=1,
+                   value="В усиленном клинкеты не ложатся в один ярус: они "
+                         "просят 10,70 м пола при 5,90. Значит задвижка "
+                         "ляжет на задвижку через доску, и нижний ряд будет "
+                         "держать и второй ряд задвижек, и всю мелочь "
+                         "сверху. В двух контейнерах клинкеты в один ярус, "
+                         "друг на друга не кладутся вообще.")
+    cell.font = NOTE
+    cell.alignment = Alignment(wrap_text=True)
     row += 1
     for i, h in enumerate(["Вариант", "Ящиков на клинкетах",
                            "Вес поверх клинкетов, кг",
@@ -657,7 +700,7 @@ def sheet_pressure(wb, boxes, tkg):
     for label, nbox_g, kg_top, press in [
         ("Два двадцатифутовых, худший из двух",
          max(d[5] for d in data), max(d[6] for d in data), worst),
-        ("Один усиленный, 27 т", 16, 11_668, 1_019),
+        ("Один усиленный, 27 т, клинкеты в два яруса", 8, 13_441, 1_067),
     ]:
         row += 1
         values = [label, nbox_g, round(kg_top), round(press),
@@ -709,7 +752,7 @@ def sheet_pressure(wb, boxes, tkg):
         ws.row_dimensions[row].height = 46
         row += 1
 
-    widths(ws, [38, 22, 18, 20, 30, 14, 20, 22, 18, 18])
+    widths(ws, [30, 20, 10, 18, 16, 16, 18, 12, 20, 20, 16, 16])
     return ws
 
 
