@@ -61,6 +61,13 @@ BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 LIMIT_KG = 22_000
 LIMIT_M3 = 33
 
+# Ящик, сбитый из поддонов: поддон 1200х1000 в основании, высота около
+# метра. Полезный объем примерно кубометр, но набивать его доверху
+# нельзя — доска бэушная, без рамного бруса по углам.
+BOX_KG = 600
+BOX_M3 = 0.9
+BOX_SIZE = "1200 x 1000 x 1000 мм, на поддоне"
+
 FILTERS = re.compile(r"фильтр.*(заборт|заборн)|сетка на фильтр", re.I)
 
 BLOCK_A = "А. Согласованный список"
@@ -367,6 +374,16 @@ def sheet_summary(wb, a, b, rest, kg, m3):
         "погрузкой характерные места надо взвесить.",
         "Остатки недостоверны: сверка была 16.06.2025. Количества блока "
         "Б подтверждаются только пересчетом на складе.",
+        "22 тонны — это предел старого двадцатифутового по ГОСТ 8477-79: "
+        "брутто 24 т минус тара 2,2-2,3 т. Внутри 5867 х 2330 х 2343 мм, "
+        "33 куб. м.",
+        "У «тяжелого» двадцатифутового по ИСО 1СС брутто 30,48 т и тара "
+        "2,2-2,3 т, то есть под груз остается около 28 т при том же "
+        "объеме 33 куб. м. Если перевозчик дает такой контейнер, "
+        "в него войдет на 6 тонн больше — спросите тип при заказе.",
+        "Объем у обоих одинаковый, 33 куб. м, и мы в него уперлись. "
+        "Значит лишние тонны можно взять только более плотным грузом: "
+        "задвижками, а не ящиками с мелочью.",
     ]:
         cell = ws.cell(row=row, column=1, value="— " + text)
         cell.font = BASE
@@ -491,6 +508,155 @@ def sheet_items(wb, name, title, items, note=""):
     return ws
 
 
+def sheet_boxes(wb, items):
+    """Сколько ящиков надо сбить и что в каждый кладем.
+
+    В ящики идет то, что лежит верхними ярусами: мелкая арматура и
+    фильтры. Задвижки и крупные фланцевые клапаны в ящики не кладем,
+    они встают на настил и крепятся к полу.
+    """
+    ws = wb.create_sheet("Ящики и места")
+    ws["A1"] = "Сколько ящиков сбить и что в них класть"
+    ws["A1"].font = TITLE
+    ws["A2"] = (f"Ящик {BOX_SIZE}. Считаем не больше {BOX_KG} кг и "
+                f"{BOX_M3} куб. м на ящик: доска бэушная, рамного бруса "
+                "по углам нет. Позиции одной группы стараемся не "
+                "разносить по разным ящикам.")
+    ws["A2"].font = NOTE
+
+    boxed = [r for r in items if tier(asrow(r)) in (3, 4)]
+    floored = [r for r in items if tier(asrow(r)) in (1, 2)]
+
+    # раскладываем по ящикам: группа за группой, не превышая лимиты
+    by_group = defaultdict(list)
+    for r in boxed:
+        by_group[group_of(r["Наименование"])].append(r)
+    order = [g for g in GROUPS if g in by_group]
+    order += [g for g in sorted(by_group) if g not in GROUPS]
+
+    boxes = []
+    cur = {"вес": 0.0, "объем": 0.0, "строки": []}
+    for group in order:
+        for r in sorted(by_group[group], key=lambda r: (r["Ду"] or 9999,
+                                                        r["Наименование"])):
+            # позицию, которая одна тяжелее ящика, делим по штукам:
+            # 798 клапанов Ду10 это почти тонна, в один ящик нельзя
+            left = r["Штук"]
+            w1 = r["вес"] / r["Штук"] if r["Штук"] else 0
+            v1 = r["объем"] / r["Штук"] if r["Штук"] else 0
+            while left > 0:
+                room_kg = BOX_KG - cur["вес"]
+                room_m3 = BOX_M3 - cur["объем"]
+                fit = left
+                if w1:
+                    fit = min(fit, int(room_kg // w1))
+                if v1:
+                    fit = min(fit, int(room_m3 // v1))
+                if fit < 1:
+                    if not cur["строки"]:
+                        # одна штука не влезает ни по весу, ни по объему
+                        fit = 1
+                    else:
+                        boxes.append(cur)
+                        cur = {"вес": 0.0, "объем": 0.0, "строки": []}
+                        continue
+                cur["вес"] += fit * w1
+                cur["объем"] += fit * v1
+                cur["строки"].append(dict(r, Штук=fit, вес=fit * w1,
+                                          объем=fit * v1))
+                left -= fit
+    if cur["строки"]:
+        boxes.append(cur)
+
+    row = 4
+    facts = [
+        ("Ящиков собрать", f"{len(boxes)} шт", BOX_SIZE),
+        ("В ящики идет", f"{sum(r['вес'] for r in boxed) / 1000:.1f} т",
+         f"{len(boxed)} позиций, "
+         f"{sum(r['Штук'] for r in boxed):.0f} штук"),
+        ("На настил и поддоны",
+         f"{sum(r['вес'] for r in floored) / 1000:.1f} т",
+         f"{len(floored)} позиций — задвижки и крупные клапаны, "
+         "в ящики не кладем"),
+        ("Поддонов под ящики", f"{len(boxes)} шт",
+         "по одному на ящик, плюс запас на бой"),
+    ]
+    for label, value, note in facts:
+        ws.cell(row=row, column=1, value=label).font = BOLD
+        ws.cell(row=row, column=2, value=value).font = BOLD
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    cols = ["Ящик №", "Что внутри", "Наименование", "Чертеж", "Ду",
+            "Штук", "Вес, кг", "Объем, куб. м"]
+    for i, h in enumerate(cols, start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, len(cols), height=28)
+
+    for n, box in enumerate(boxes, start=1):
+        groups = sorted({group_of(r["Наименование"]) for r in box["строки"]})
+        row += 1
+        ws.cell(row=row, column=1, value=f"ЯЩИК {n}")
+        ws.cell(row=row, column=2, value=", ".join(groups))
+        ws.cell(row=row, column=6,
+                value=sum(r["Штук"] for r in box["строки"]))
+        ws.cell(row=row, column=7, value=round(box["вес"]))
+        ws.cell(row=row, column=8, value=round(box["объем"], 2))
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = GROUP_FILL
+            cell.font = SUB
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=(c == 2))
+            if c == 7:
+                cell.number_format = "#,##0"
+        for r in box["строки"]:
+            row += 1
+            values = [None, group_of(r["Наименование"]), r["Наименование"],
+                      r["Чертеж"], r["Ду"], r["Штук"], round(r["вес"]),
+                      round(r["объем"], 3)]
+            for i, v in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=i, value=v)
+                cell.font = BASE
+                cell.border = BORDER
+                cell.alignment = Alignment(vertical="top",
+                                           wrap_text=(i in (2, 3)))
+                if i == 7:
+                    cell.number_format = "#,##0"
+                if i == 8:
+                    cell.number_format = "#,##0.000"
+            if not r["Чертеж"]:
+                ws.cell(row=row, column=4).fill = NODRAW_FILL
+
+    row += 2
+    ws.cell(row=row, column=1, value="Что учесть по таре").font = SUB
+    row += 1
+    for text in [
+        f"Ящик из бэушной доски на {BOX_KG} кг держит только при брусе "
+        "50х50 по четырем углам и по верху. Без него стенка сложится "
+        "при первом же ударе на маневрировании.",
+        "Дно ящика набиваем доской вплотную, без щелей шире ладони: "
+        "мелкий клапан проваливается и бьет соседей.",
+        "На каждый ящик — бирка: номер, группа, вес, строки реестра и "
+        "стрелки «верх». Принимать груз будут по упаковочному листу.",
+        "Задвижки и крупные фланцевые клапаны в ящики не кладем: они "
+        "встают прямо на настил, с прокладкой доской между рядами и "
+        "креплением к рымам.",
+        "Фильтры идут верхним ярусом на ящиках, поэтому ящики под ними "
+        "должны быть самыми крепкими — туда ставим те, что с брусом.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + text)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[row].height = 30
+        row += 1
+
+    widths(ws, [12, 30, 48, 20, 8, 9, 11, 13])
+    ws.freeze_panes = "C5"
+    return ws
+
+
 def sheet_packing(wb):
     ws = wb.create_sheet("Упаковка и крепление")
     ws["A1"] = "Как паковать, чтобы доехало без помятых фланцев"
@@ -522,6 +688,7 @@ def main():
                 "со склада. Желтым помечен пустой чертеж.")
     sheet_items(wb, "Остается", "Что остается во Владивостоке", rest,
                 "Это второй борт: тяжелое и дешевое на килограмм.")
+    sheet_boxes(wb, a + b)
     sheet_packing(wb)
 
     OUT.mkdir(parents=True, exist_ok=True)
