@@ -8,8 +8,11 @@
 картинке видно, где на самом деле остается место — и видно, насколько
 ниже пирог в двадцатифутовых.
 
-Результат: outputs/marine_equipment/Схема_загрузки_40ф.svg
-           outputs/marine_equipment/Схема_загрузки_2х20ф.svg
+Рядом с каждым SVG кладем PNG и PDF: SVG открывается не на всяком
+устройстве, а картинку и PDF откроет любой телефон.
+
+Результат: outputs/marine_equipment/Схема_загрузки_40ф.svg (+ png, pdf)
+           outputs/marine_equipment/Схема_загрузки_2х20ф.svg (+ png, pdf)
 """
 
 import pathlib
@@ -306,6 +309,17 @@ def save(path, blocks):
     OUT.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(out), encoding="utf-8")
     print(f"готово: {path}")
+    # SVG открывается не везде, поэтому рядом кладем PNG и PDF
+    try:
+        import cairosvg
+    except ImportError:
+        print("  cairosvg не установлен, PNG и PDF не собраны")
+        return
+    png, pdf = path.with_suffix(".png"), path.with_suffix(".pdf")
+    cairosvg.svg2png(url=str(path), write_to=str(png), scale=1.5)
+    cairosvg.svg2pdf(url=str(path), write_to=str(pdf))
+    print(f"готово: {png}")
+    print(f"готово: {pdf}")
 
 
 def main():
