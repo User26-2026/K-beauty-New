@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Два двадцатифутовых контейнера в Санкт-Петербург.
+"""Два двадцатифутовых контейнера в Петербург, с равной развеской.
 
-Сорокафутовый упирается в вес, а не в объем: арматура плотная, 25 тонн
-набираются на половине объема, и 7,6 тонны остаются во Владивостоке.
-Два двадцатифутовых дают 40 тонн вместо 25 и забирают всю арматуру за
-один заход, с запасом по весу и по объему.
+Берем тот же перечень, что и в плане одного контейнера: согласованный
+список менеджера целиком плюс добор со склада во Владивостоке, без
+стали и без клапанных коробок. Это 27,3 т. В один сорокафутовый они
+не влезают, в два двадцатифутовых влезают с запасом.
 
-Контейнер 1 грузим первым: бронза, латунь, титан и все, что дороже на
-килограмм. Контейнер 2 забирает остаток — тяжелую сталь, клапанные
-коробки и мелочь в ящиках. Если второй уходит позже, первый уже везет
-самое ценное.
+Главное здесь не вместимость, а сохранность. Раньше первый контейнер
+набивался доверху самым дорогим, а второй забирал остаток. Теперь вес
+и объем делятся поровну, и делятся поярусно: каждый контейнер получает
+половину тяжелых задвижек, половину средней арматуры, половину ящиков
+и половину фильтров. В каждом едет около 13,7 т вместо 25 — пирог
+вдвое ниже, и на нижний ряд давит вдвое меньше.
+
+Позиции при этом дробятся по штукам: если партия задвижек перекашивает
+контейнер, половина штук уезжает во втором.
 
 Результат: outputs/marine_equipment/План_2_контейнера.xlsx
 """
@@ -23,12 +28,13 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from build_shipment_spb import (  # noqa: E402
-    FLOOR, LIMIT_KG, LIMIT_M3, PACKING, QUEUE, TIERS, hold, is_bronze,
-    is_titanium, item_kind, material, pack_type, priority, queue, select,
-    tier,
+from build_container_spb import (  # noqa: E402
+    COLS, asrow, collect, plural,
 )
-from build_weight_xlsx import du  # noqa: E402
+from build_shipment_spb import (  # noqa: E402
+    FLOOR, PACKING, TIERS, pack_type, tier,
+)
+from build_spb_list_xlsx import GROUPS, group_of  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
@@ -43,16 +49,45 @@ NOTE = Font(name=FONT, size=9, italic=True, color="666666")
 ONE_FILL = PatternFill("solid", fgColor="EAF3EA")
 TWO_FILL = PatternFill("solid", fgColor="FDF2E3")
 WARN_FILL = PatternFill("solid", fgColor="FCE4D6")
-SUB_FILL = PatternFill("solid", fgColor="D9E2F3")
+GROUP_FILL = PatternFill("solid", fgColor="D9E2F3")
+MARK_FILL = PatternFill("solid", fgColor="FFF2CC")
+NODRAW_FILL = PatternFill("solid", fgColor="FFFF00")
 THIN = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
-# двадцатифутовый: 33 куб. м внутри, по весу берем 20 тонн, как
-# и решили. По паспорту в него входит больше, но 20 тонн — это то,
-# что спокойно едет по дорогам без разрешений
-BOX_KG = 20_000
-BOX_M3 = 33
+# двадцатифутовый обычный: 22 тонны по ставке 236 тысяч, внутри
+# 33 куб. м. Пол 5 898 х 2 352 мм
+BOX_KG = 22_000
+BOX_M3 = 33.0
 BOXES = 2
+FLOOR_L, FLOOR_W = 5.898, 2.352
+FLOOR_AREA = FLOOR_L * FLOOR_W
+
+# сырая необрезная доска 25 мм: 700 кг в кубометре, 0,035 куб. м
+# на тонну груза
+BOARD_RHO = 700
+BOARD_PER_T = 0.035
+
+# погрузка во Владивостоке
+FORKLIFT_CALL = 12_000
+FORKLIFT_HOUR = 2_000
+LOADERS = 4
+LOADER_HOUR = 750
+HOURS_BOX = 4
+
+# ящик на поддоне: больше 600 кг не набираем, иначе его не возьмет
+# ни погрузчик, ни нижний ящик под ним
+BOX_LIMIT_KG = 600
+
+# с чем сравниваем перекос: 50 кг по ярусу и 0,3 куб. м по объему
+# считаем одинаково заметными, по ним и нормируем цену расклада
+TOL = 50
+TOL_M3 = 0.3
+# цена одного дробления позиции между контейнерами. Дробить удобно
+# расчету и неудобно бригаде: на каждую такую позицию надо считать
+# штуки на площадке. Берем ее равной перекосу в 50 кг: ради меньшего
+# выигрыша не дробим
+SPLIT_COST = 1.0
 
 NAMES = {1: "Контейнер 1", 2: "Контейнер 2"}
 
@@ -72,247 +107,567 @@ def widths(ws, values):
         ws.column_dimensions[get_column_letter(i)].width = w
 
 
-def first_first(r):
-    """Порядок загрузки для двух контейнеров.
+def key_of(r):
+    return (r["Наименование"], r["Откуда"], r["Блок"])
 
-    В одном контейнере мелочь стояла последней: она вытесняла тяжелое
-    и оставалась во Владивостоке. Здесь уезжает все, вопрос только в
-    том, что поедет первым бортом. Поэтому мелочь больше не отодвигаем:
-    штуцерный клапан дает 5 758 руб с килограмма против 784 у задвижки,
-    и в первом контейнере ему место.
-    """
-    q = queue(r)
-    if q == 5:
-        q = 4
-    price_per_kg = r["Сумма"] / r["вес"] if r["вес"] else 0
-    return (q, -price_per_kg)
+
+def scaled(r, qty):
+    """Копия позиции на другое количество штук."""
+    c = dict(r)
+    c["Штук"] = qty
+    c["вес"] = qty * r["вес_ед"]
+    c["объем"] = qty * r["объем_ед"]
+    c["Сумма"] = qty * r["цена_ед"]
+    return c
+
+
+def pool_all():
+    """Весь перечень на отгрузку, без лимитов контейнера."""
+    block_a, block_b, rest, _, _ = collect(10 ** 9, 10 ** 9)
+    rows = block_a + block_b + rest
+    for r in rows:
+        qty = r["Штук"] or 0
+        r["объем_ед"] = r["объем"] / qty if qty else 0
+        r["цена_ед"] = (r["Сумма"] / qty) if qty and r["Сумма"] else 0
+    return [r for r in rows if (r["Штук"] or 0) > 0]
 
 
 def split():
-    """Разложить всю арматуру по двум контейнерам.
+    """Разложить перечень по двум контейнерам поровну.
 
-    Сначала то, что назвал покупатель, дальше по цене за килограмм.
-    Первый контейнер набирается доверху самым дорогим, остальное идет
-    во второй.
+    Делим не общий вес, а каждый ярус отдельно. Если поделить только
+    общий вес, можно получить контейнер, забитый одними задвижками, и
+    второй с одними ящиками: в первом нижний ряд передавит, во втором
+    нечем держать груз на полу. Поярусная развеска дает одинаковый
+    пирог в обоих: настил, задвижки, доска, средняя арматура, доска,
+    ящики, сверху фильтры и титан.
     """
-    go, stay, held, _, _ = select()
-    pool = sorted(go + stay + held, key=first_first)
-
-    boxes = {n: [] for n in range(1, BOXES + 1)}
+    pool = pool_all()
+    boxes = {n: {} for n in range(1, BOXES + 1)}
     load = {n: [0.0, 0.0] for n in range(1, BOXES + 1)}
+    tkg = {n: defaultdict(float) for n in range(1, BOXES + 1)}
     rest = []
-    for r in pool:
-        for n in range(1, BOXES + 1):
-            kg, m3 = load[n]
-            if kg + r["вес"] <= BOX_KG and m3 + r["объем"] <= BOX_M3:
-                r["Контейнер"] = n
-                boxes[n].append(r)
-                load[n] = [kg + r["вес"], m3 + r["объем"]]
+
+    def put(n, r, qty):
+        k = key_of(r)
+        cur = boxes[n].get(k)
+        cur = scaled(r, (cur["Штук"] if cur else 0) + qty)
+        cur["Контейнер"] = n
+        boxes[n][k] = cur
+        load[n][0] += qty * r["вес_ед"]
+        load[n][1] += qty * r["объем_ед"]
+        tkg[n][tier(asrow(r))] += qty * r["вес_ед"]
+
+    def take(n, r, qty):
+        k = key_of(r)
+        cur = boxes[n][k]
+        left = cur["Штук"] - qty
+        if left > 0:
+            boxes[n][k] = scaled(cur, left)
+            boxes[n][k]["Контейнер"] = n
+        else:
+            del boxes[n][k]
+        load[n][0] -= qty * r["вес_ед"]
+        load[n][1] -= qty * r["объем_ед"]
+        tkg[n][tier(asrow(r))] -= qty * r["вес_ед"]
+
+    # первый проход: тяжелое вперед, каждую позицию в тот контейнер,
+    # где этого яруса пока меньше
+    for r in sorted(pool, key=lambda x: (tier(asrow(x)), -x["вес"])):
+        t = tier(asrow(r))
+        order = sorted(range(1, BOXES + 1),
+                       key=lambda n: (tkg[n][t], load[n][0], n))
+        for n in order:
+            if (load[n][0] + r["вес"] <= BOX_KG
+                    and load[n][1] + r["объем"] <= BOX_M3):
+                put(n, r, r["Штук"])
                 break
         else:
             r["Контейнер"] = 0
             rest.append(r)
-    return boxes, load, rest
+
+    # второй проход: дробим позиции по штукам и выравниваем сразу вес
+    # каждого яруса и общий объем. Один только вес выровнять мало:
+    # можно получить контейнер, набитый мелочью в ящиках, и второй с
+    # голыми задвижками — вес тот же, а места разные
+    def splits():
+        return sum(1 for k in boxes[1] if k in boxes[2])
+
+    def cost():
+        c = sum(((tkg[1][t] - tkg[2][t]) / TOL) ** 2 for t in TIERS)
+        c += ((load[1][1] - load[2][1]) / TOL_M3) ** 2
+        return c + SPLIT_COST * splits()
+
+    def after(r, qty, a, b):
+        """Цена расклада, если перенести qty штук из a в b."""
+        t = tier(asrow(r))
+        dw, dv = qty * r["вес_ед"], qty * r["объем_ед"]
+        sign = 1 if a == 1 else -1
+        c = 0.0
+        for tt in TIERS:
+            g = tkg[1][tt] - tkg[2][tt]
+            if tt == t:
+                g -= sign * 2 * dw
+            c += (g / TOL) ** 2
+        gv = (load[1][1] - load[2][1]) - sign * 2 * dv
+        c += (gv / TOL_M3) ** 2
+        # дробление платное: переносим часть штук — позиция окажется
+        # в обоих контейнерах, переносим все — перестанет
+        k = key_of(r)
+        n_split = splits()
+        if qty < r["Штук"] and k not in boxes[b]:
+            n_split += 1
+        elif qty == r["Штук"] and k in boxes[b]:
+            n_split -= 1
+        return c + SPLIT_COST * n_split
+
+    moves = []
+    for _ in range(2000):
+        now = cost()
+        best, best_cost = None, now
+        for a in range(1, BOXES + 1):
+            b = 2 if a == 1 else 1
+            for r in list(boxes[a].values()):
+                if not r["вес_ед"] and not r["объем_ед"]:
+                    continue
+                qty_set = {1, r["Штук"], max(1, r["Штук"] // 2)}
+                if r["вес_ед"]:
+                    ideal = abs(tkg[1][tier(asrow(r))]
+                                - tkg[2][tier(asrow(r))]) / 2 / r["вес_ед"]
+                    qty_set.add(max(1, min(r["Штук"], round(ideal))))
+                for qty in qty_set:
+                    if (load[b][0] + qty * r["вес_ед"] > BOX_KG
+                            or load[b][1] + qty * r["объем_ед"] > BOX_M3):
+                        continue
+                    c = after(r, qty, a, b)
+                    if c < best_cost - 1e-9:
+                        best, best_cost = (r, qty, a, b), c
+        if not best:
+            break
+        r, qty, a, b = best
+        take(a, r, qty)
+        put(b, r, qty)
+        moves.append((r["Наименование"], qty, r["Штук"], a, b))
+
+    # в отчет идут только настоящие дробления: позиция, которая целиком
+    # переехала в другой контейнер, просто там и лежит
+    split_moves = [m for m in moves if m[2] > m[1]]
+
+    out = {n: list(boxes[n].values()) for n in boxes}
+    return out, load, tkg, rest, split_moves
 
 
-def sheet_summary(wb, boxes, load, rest):
+def board_kg(kg):
+    return kg / 1000 * BOARD_PER_T * BOARD_RHO
+
+
+def loading_cost(same_day=True):
+    """Погрузка двух контейнеров: подача погрузчика, часы, бригада."""
+    calls = 1 if same_day else BOXES
+    hours = HOURS_BOX * BOXES
+    return (FORKLIFT_CALL * calls + FORKLIFT_HOUR * hours
+            + LOADERS * LOADER_HOUR * hours)
+
+
+def crates(kg_tier3):
+    """Сколько ящиков с мелочью выходит на контейнер."""
+    return max(1, int(kg_tier3 / BOX_LIMIT_KG) + (1 if kg_tier3 % BOX_LIMIT_KG else 0))
+
+
+def sheet_summary(wb, boxes, load, tkg, rest, moves):
     ws = wb.create_sheet("Сводка", 0)
-    ws["A1"] = "Два двадцатифутовых контейнера в Петербург"
+    ws["A1"] = "Два двадцатифутовых в Петербург, развеска поровну"
     ws["A1"].font = TITLE
-    ws["A2"] = (f"По {BOX_KG // 1000} тонн и {BOX_M3} куб. м на контейнер. "
-                "Арматура плотная: вес упирается раньше объема, поэтому "
-                "два двадцатифутовых выгоднее одного сорокафутового.")
+    ws["A2"] = (f"По {BOX_KG // 1000} т и {BOX_M3:.0f} куб. м на контейнер. "
+                "Вес и объем делятся пополам, и делятся поярусно: в каждом "
+                "контейнере свой полный пирог, а не отдельно задвижки и "
+                "отдельно ящики.")
     ws["A2"].font = NOTE
 
     row = 4
-    ws.cell(row=row, column=1, value="Сравнение вариантов").font = SUB
-    row += 1
-    for i, h in enumerate(["Вариант", "Лимит веса", "Лимит объема",
-                           "Увезет арматуры", "Останется во Владивостоке"],
-                          start=1):
-        ws.cell(row=row, column=i, value=h)
-    head(ws, row, 5, height=24)
-
-    total_kg = sum(load[n][0] for n in boxes) + sum(r["вес"] for r in rest)
-    total_val = (sum(r["Сумма"] for n in boxes for r in boxes[n])
-                 + sum(r["Сумма"] for r in rest))
-    packed_kg = sum(load[n][0] for n in boxes)
-    packed_val = sum(r["Сумма"] for n in boxes for r in boxes[n])
-
-    variants = [
-        ("Один сорокафутовый", f"{LIMIT_KG / 1000:.0f} т",
-         f"{LIMIT_M3} куб. м", f"{LIMIT_KG / 1000:.0f} т",
-         f"{(total_kg - LIMIT_KG) / 1000:.1f} т"),
-        (f"Два двадцатифутовых", f"{BOXES * BOX_KG / 1000:.0f} т",
-         f"{BOXES * BOX_M3} куб. м", f"{packed_kg / 1000:.1f} т",
-         f"{sum(r['вес'] for r in rest) / 1000:.1f} т"),
-    ]
-    for v in variants:
-        row += 1
-        for i, val in enumerate(v, start=1):
-            cell = ws.cell(row=row, column=i, value=val)
-            cell.font = BOLD if "двадцати" in v[0] else BASE
-            cell.border = BORDER
-            if "двадцати" in v[0]:
-                cell.fill = ONE_FILL
-
-    row += 2
     ws.cell(row=row, column=1, value="Что в каком контейнере").font = SUB
     row += 1
-    for i, h in enumerate(["Контейнер", "Позиций", "Штук", "Вес, т",
-                           "Загрузка по весу", "Объем, куб. м",
-                           "Загрузка по объему", "Стоимость, руб"],
-                          start=1):
+    cols = ["Контейнер", "Позиций", "Штук", "Вес груза, т", "Доска, кг",
+            "Всего в контейнере, т", "Загрузка по весу", "Объем, куб. м",
+            "Загрузка по объему"]
+    for i, h in enumerate(cols, start=1):
         ws.cell(row=row, column=i, value=h)
-    head(ws, row, 8, height=28)
+    head(ws, row, len(cols), height=32)
 
     for n in sorted(boxes):
         row += 1
         kg, m3 = load[n]
         items = boxes[n]
-        values = [NAMES[n], len(items), sum(r["Наличие"] for r in items),
-                  round(kg / 1000, 2), kg / BOX_KG, round(m3, 1),
-                  m3 / BOX_M3, sum(r["Сумма"] for r in items)]
+        total = kg + board_kg(kg)
+        values = [NAMES[n], len(items), sum(r["Штук"] for r in items),
+                  kg / 1000, round(board_kg(kg)), total / 1000,
+                  total / BOX_KG, round(m3, 1), m3 / BOX_M3]
         for i, v in enumerate(values, start=1):
             cell = ws.cell(row=row, column=i, value=v)
             cell.font = BASE
             cell.border = BORDER
             cell.fill = ONE_FILL if n == 1 else TWO_FILL
-            if i in (5, 7):
+            if i in (4, 6):
+                cell.number_format = "#,##0.00"
+            if i in (7, 9):
                 cell.number_format = "0%"
-            if i == 8:
-                cell.number_format = "#,##0"
-    if rest:
-        row += 1
-        values = ["Не влезло", len(rest), sum(r["Наличие"] for r in rest),
-                  round(sum(r["вес"] for r in rest) / 1000, 2), None,
-                  round(sum(r["объем"] for r in rest), 1), None,
-                  sum(r["Сумма"] for r in rest)]
-        for i, v in enumerate(values, start=1):
-            cell = ws.cell(row=row, column=i, value=v)
-            cell.font = BASE
-            cell.border = BORDER
-            cell.fill = WARN_FILL
-            if i == 8:
+            if i in (5, 8):
                 cell.number_format = "#,##0"
 
+    row += 1
+    kg_all = sum(load[n][0] for n in boxes)
+    values = ["ИТОГО", sum(len(boxes[n]) for n in boxes),
+              sum(r["Штук"] for n in boxes for r in boxes[n]),
+              kg_all / 1000, round(board_kg(kg_all)),
+              (kg_all + board_kg(kg_all)) / 1000, None,
+              round(sum(load[n][1] for n in boxes), 1), None]
+    for i, v in enumerate(values, start=1):
+        cell = ws.cell(row=row, column=i, value=v)
+        cell.font = BOLD
+        cell.border = BORDER
+        if i in (4, 6):
+            cell.number_format = "#,##0.00"
+        if i in (5, 8):
+            cell.number_format = "#,##0"
+
+    if rest:
+        row += 1
+        for i, v in enumerate(["Не влезло", len(rest),
+                               sum(r["Штук"] for r in rest),
+                               sum(r["вес"] for r in rest) / 1000], start=1):
+            cell = ws.cell(row=row, column=i, value=v)
+            cell.font = BOLD
+            cell.fill = WARN_FILL
+            cell.border = BORDER
+
     row += 2
+    ws.cell(row=row, column=1, value="Насколько ровно вышло").font = SUB
+    row += 1
+    kg1, kg2 = load[1][0], load[2][0]
+    m31, m32 = load[1][1], load[2][1]
+    for label, a, b, unit in [("Вес груза", kg1, kg2, "кг"),
+                              ("Объем", m31, m32, "куб. м")]:
+        diff = abs(a - b)
+        share = diff / max(a, b) if max(a, b) else 0
+        cell = ws.cell(row=row, column=1,
+                       value=f"— {label}: {a:,.1f} и {b:,.1f} {unit}, "
+                             f"разница {diff:,.1f} {unit}, это "
+                             f"{share * 100:.1f}%.".replace(",", " "))
+        cell.font = BASE
+        row += 1
+    for t in sorted(TIERS):
+        d = abs(tkg[1][t] - tkg[2][t])
+        cell = ws.cell(row=row, column=1,
+                       value=f"— {TIERS[t][0]}: {tkg[1][t]:,.0f} и "
+                             f"{tkg[2][t]:,.0f} кг, перекос {d:,.0f} кг."
+                       .replace(",", " "))
+        cell.font = BASE
+        row += 1
+    if moves:
+        cell = ws.cell(row=row, column=1,
+                       value=f"— Чтобы выйти на такую развеску, по "
+                             f"{len(moves)} "
+                             f"{plural(len(moves), 'позиции', 'позициям', 'позициям')}"
+                             " штуки поделены между контейнерами. Список — "
+                             "на вкладке «Поделенные позиции».")
+        cell.font = BASE
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="Погрузка во Владивостоке").font = SUB
+    row += 1
+    for label, value in [
+        ("Подача погрузчика, за выезд", FORKLIFT_CALL),
+        ("Погрузчик, руб за час", FORKLIFT_HOUR),
+        (f"Грузчики, {LOADERS} человека, руб за час с человека",
+         LOADER_HOUR),
+        ("Часов на контейнер", HOURS_BOX),
+        ("Погрузка обоих в один день, руб", loading_cost(True)),
+        ("Погрузка разными днями, руб", loading_cost(False)),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BASE
+        cell = ws.cell(row=row, column=2, value=value)
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.number_format = "#,##0"
+        row += 1
+    cell = ws.cell(row=row, column=1,
+                   value="Подача погрузчика платится за выезд, а не за "
+                         "контейнер: грузим оба в один день — платим один "
+                         "раз, это 12 тысяч разницы. Выгрузка в Петербурге "
+                         "сюда не входит, ставок на нее пока нет.")
+    cell.font = NOTE
+    row += 2
+
     ws.cell(row=row, column=1, value="Что это дает").font = SUB
     row += 1
     for text in [
-        f"Вся арматура и фильтры — это {total_kg / 1000:.1f} т и "
-        f"{total_val / 1e6:.1f} млн руб. В два двадцатифутовых входит "
-        f"{packed_kg / 1000:.1f} т на {packed_val / 1e6:.1f} млн, то есть "
-        "практически все за один заход.",
-        f"Сорокафутовый брал {LIMIT_KG / 1000:.0f} т и оставлял "
-        f"{(total_kg - LIMIT_KG) / 1000:.1f} т во Владивостоке. Разница "
-        "в пользу двух двадцатифутовых — целый второй рейс, которого "
-        "не надо делать.",
-        "Объем при этом занят чуть больше чем наполовину: груз плотный, "
-        "контейнеры упираются в вес. Значит, добрать объемом ничего "
-        "не выйдет, зато остается место под правильную укладку и "
-        "прокладки.",
-        "Двадцатифутовый на 20 тонн спокойно едет по дорогам без "
-        "спецразрешений. Сорокафутовый на 25 тонн на автоплече часто "
-        "требует согласований.",
-        "Контейнеры можно отправить в разное время: первый везет "
-        "бронзу, латунь и титан, второй ждет хоть до инвентаризации.",
-        "Минус один: два контейнера — это два подъема краном, две "
-        "подачи и обычно дороже по ставке, чем один сорокафутовый. "
-        "Ставку надо запросить у перевозчика на оба варианта.",
+        f"Весь перечень — {kg_all / 1000:.2f} т. Поровну это по "
+        f"{kg_all / 2000:.2f} т груза плюс {board_kg(kg_all / 2):.0f} кг "
+        f"доски на контейнер, при лимите {BOX_KG // 1000} т. Запас больше "
+        "трети: по весу мы никуда не упираемся, и это главное для "
+        "сохранности.",
+        "Сорокафутовый брал 25,35 т в один корпус и оставлял 1,94 т во "
+        "Владивостоке. Там пирог вдвое выше и вдвое тяжелее давит на "
+        "нижний ряд задвижек.",
+        "Объем занят примерно наполовину. Свободная высота — не потеря, "
+        "а запас под прокладки, брус и распорки: пустоты в контейнере "
+        "опаснее перегруза.",
+        "Каждый контейнер получает половину каждого яруса, поэтому схема "
+        "укладки у них одинаковая и бригаде не надо объяснять два разных "
+        "порядка.",
+        "Контейнеры можно отправить в разные дни, но тогда погрузчик "
+        "подается дважды. Один день погрузки дешевле на 12 тысяч.",
     ]:
         cell = ws.cell(row=row, column=1, value="— " + text)
         cell.font = BASE
         cell.alignment = Alignment(wrap_text=True, vertical="top")
-        ws.row_dimensions[row].height = 30
+        ws.row_dimensions[row].height = 32
         row += 1
 
-    widths(ws, [30, 14, 12, 12, 16, 14, 16, 18])
+    widths(ws, [36, 12, 10, 14, 11, 18, 14, 12, 16])
     return ws
 
 
-COLS = ["№", "Очередь", "Ярус", "Тип", "Диаметр", "Наименование",
-        "Материал", "Штук", "Вес, кг", "Объем, м³", "Стоимость, руб",
-        "Руб за кг", "Как паковать", "Локация", "Отметка"]
-
-
-def sheet_box(wb, n, items, load):
-    ws = wb.create_sheet(NAMES[n])
-    kg, m3 = load
-    ws["A1"] = f"{NAMES[n]}: что грузим"
+def sheet_balance(wb, boxes, load, tkg):
+    ws = wb.create_sheet("Развеска по ярусам")
+    ws["A1"] = "Развеска по ярусам: чтобы ничего не подавило"
     ws["A1"].font = TITLE
-    ws["A2"] = (f"{len(items)} позиций, {sum(r['Наличие'] for r in items):.0f}"
-                f" штук, {kg / 1000:.1f} т из {BOX_KG // 1000} т, "
-                f"{m3:.1f} куб. м из {BOX_M3}.")
+    ws["A2"] = ("Ярусы 1 и 2 лежат на полу, ящики третьего яруса стоят "
+                "рядом и в два уровня, фильтры и титан — сверху на ящиках. "
+                "Давит только то, что лежит выше.")
     ws["A2"].font = NOTE
 
-    start = 4
-    for i, h in enumerate(COLS, start=1):
-        ws.cell(row=start, column=i, value=h)
-    head(ws, start, len(COLS))
+    row = 4
+    cols = ["Ярус", "Что лежит", "Контейнер 1, кг", "Контейнер 2, кг",
+            "Перекос, кг", "Объем К1, куб. м", "Объем К2, куб. м",
+            "Высота слоя по полу, м", "Нагрузка на пол, кг/кв. м"]
+    for i, h in enumerate(cols, start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, len(cols), height=40)
 
-    items = sorted(items, key=lambda r: (tier(r), queue(r),
-                                         -(r["Сумма"] / r["вес"]
-                                           if r["вес"] else 0)))
-    for k, r in enumerate(items, start=1):
-        row = start + k
-        d = du(r["Наименование"])
-        values = [k, QUEUE[queue(r)], TIERS[tier(r)][0], item_kind(r),
-                  f"Ду{d}" if d else "", r["Наименование"], material(r),
-                  r["Наличие"], round(r["вес"]), round(r["объем"], 3),
-                  r["Сумма"] or None,
-                  round(r["Сумма"] / r["вес"]) if r["вес"] and r["Сумма"]
-                  else None,
-                  pack_type(r), r["Локация"], hold(r)]
+    vol = {n: defaultdict(float) for n in boxes}
+    for n in boxes:
+        for r in boxes[n]:
+            vol[n][tier(asrow(r))] += r["объем"]
+
+    for t in sorted(TIERS):
+        row += 1
+        a, b = tkg[1][t], tkg[2][t]
+        v1, v2 = vol[1][t], vol[2][t]
+        height = max(v1, v2) / FLOOR_AREA
+        on_floor = t in (1, 2)
+        values = [TIERS[t][0], TIERS[t][1], round(a), round(b),
+                  round(abs(a - b)), round(v1, 1), round(v2, 1),
+                  round(height, 2),
+                  round(max(a, b) / FLOOR_AREA) if on_floor else None]
         for i, v in enumerate(values, start=1):
             cell = ws.cell(row=row, column=i, value=v)
             cell.font = BASE
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top",
-                                       wrap_text=(i in (2, 6, 13)))
-            if i in (9, 11, 12):
+            cell.alignment = Alignment(vertical="top", wrap_text=(i == 2))
+            if i in (3, 4, 5, 9):
                 cell.number_format = "#,##0"
-            if i == 10:
-                cell.number_format = "#,##0.000"
-        if is_bronze(r) or is_titanium(r):
-            ws.cell(row=row, column=7).fill = ONE_FILL
-        if hold(r):
-            ws.cell(row=row, column=15).fill = WARN_FILL
+            if i in (6, 7):
+                cell.number_format = "#,##0.0"
+            if i == 8:
+                cell.number_format = "#,##0.00"
+            if i == 5 and abs(a - b) > TOL:
+                cell.fill = WARN_FILL
 
-    last = start + len(items)
-    ws.cell(row=last + 1, column=6, value="ИТОГО").font = BOLD
-    for col in (8, 9, 11):
-        letter = get_column_letter(col)
-        cell = ws.cell(row=last + 1, column=col,
-                       value=f"=SUM({letter}{start + 1}:{letter}{last})")
+    row += 2
+    ws.cell(row=row, column=1, value="Что на что давит").font = SUB
+    row += 1
+    cols2 = ["Контейнер", "Лежит на полу, кг", "В ящиках, кг",
+             "Ящиков в контейнере", "Стоит на ящиках, кг",
+             "На один ящик сверху, кг", "Нагрузка на пол, кг/кв. м",
+             "Проверка"]
+    for i, h in enumerate(cols2, start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, len(cols2), height=32)
+
+    for n in sorted(boxes):
+        row += 1
+        floor_kg = tkg[n][1] + tkg[n][2]
+        box_kg = tkg[n][3]
+        top_kg = tkg[n][4]
+        nbox = crates(box_kg)
+        per_crate = top_kg / nbox
+        press = (floor_kg + box_kg + top_kg) / FLOOR_AREA
+        ok = ("норма" if per_crate <= BOX_LIMIT_KG
+              else "перегруз по верхнему ярусу")
+        values = [NAMES[n], round(floor_kg), round(box_kg), nbox,
+                  round(top_kg), round(per_crate), round(press), ok]
+        for i, v in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=i, value=v)
+            cell.font = BASE
+            cell.border = BORDER
+            cell.fill = ONE_FILL if n == 1 else TWO_FILL
+            if i in (2, 3, 5, 6, 7):
+                cell.number_format = "#,##0"
+            if i == 8 and ok != "норма":
+                cell.fill = WARN_FILL
+
+    row += 2
+    ws.cell(row=row, column=1, value="Почему так сохраннее").font = SUB
+    row += 1
+    for text in [
+        "Ни один ярус арматуры не стоит на другом ярусе арматуры: "
+        "задвижки и тяжелое лежат на полу в один слой, ящики стоят "
+        "рядом, а не поверх задвижек. На ящики идут только фильтры и "
+        "титан — самое легкое, что есть.",
+        "Задвижки кладем плашмя на доску, фланцем вниз, и никогда "
+        "фланцем на фланец: привалочная поверхность и шпилечные "
+        "отверстия страдают первыми, а восстановить их нельзя.",
+        "Между рядами задвижек Ду250-350 шаг прокладок 300-400 мм, а не "
+        "600: длинный корпус на двух опорах прогибается и дает трещину "
+        "по приливу.",
+        "Маховики и штоки нагрузку не несут. Снимающиеся маховики "
+        "снимаем и кладем в ящик с биркой по номеру места.",
+        "Все на поддонах и в обрешетке притянуто ремнями к рымам: месяц "
+        "дороги — это продольные удары при маневрировании, а не "
+        "равномерная езда.",
+        "Пустоты забиваем распорками. Свободный объем в этом плане "
+        "есть, и это плюс: есть куда поставить брус.",
+        "Влагопоглотитель под крышу: конденсат за месяц дает налет на "
+        "бронзе и ржавчину на стальных шпильках.",
+        "Погрузчиком берем только поддоны и обрешетку. Голую задвижку "
+        "вилами не поднимаем: мятый фланец — это минус позиция.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + text)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[row].height = 32
+        row += 1
+
+    widths(ws, [24, 44, 15, 15, 13, 15, 15, 20, 20])
+    return ws
+
+
+def sheet_moves(wb, moves):
+    ws = wb.create_sheet("Поделенные позиции")
+    ws["A1"] = "Позиции, поделенные между контейнерами"
+    ws["A1"].font = TITLE
+    ws["A2"] = ("Без дробления по штукам ровной развески не выходит: одна "
+                "партия задвижек весит больше тонны и перекашивает "
+                "контейнер целиком. При погрузке считаем штуки по этой "
+                "вкладке.")
+    ws["A2"].font = NOTE
+    for i, h in enumerate(["№", "Наименование", "Штук переносим",
+                           "Откуда", "Куда"], start=1):
+        ws.cell(row=4, column=i, value=h)
+    head(ws, 4, 5, height=24)
+    for k, (name, qty, _left, hi, lo) in enumerate(moves, start=1):
+        for i, v in enumerate([k, name, qty, NAMES[hi], NAMES[lo]], start=1):
+            cell = ws.cell(row=4 + k, column=i, value=v)
+            cell.font = BASE
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=(i == 2))
+    widths(ws, [5, 60, 16, 16, 16])
+    return ws
+
+
+def sheet_box(wb, n, items, load, tkg):
+    ws = wb.create_sheet(NAMES[n])
+    kg, m3 = load
+    ws["A1"] = f"{NAMES[n]}: что грузим"
+    ws["A1"].font = TITLE
+    ws["A2"] = (f"{len(items)} {plural(len(items), 'позиция', 'позиции', 'позиций')}"
+                f", {sum(r['Штук'] for r in items):.0f} шт, "
+                f"{kg / 1000:.2f} т груза плюс {board_kg(kg):.0f} кг доски "
+                f"при лимите {BOX_KG // 1000} т, {m3:.1f} куб. м из "
+                f"{BOX_M3:.0f}. Порядок — по группам, от мелкой арматуры "
+                "к крупной.")
+    ws["A2"].font = NOTE
+
+    start = 4
+    for i, (h, _) in enumerate(COLS, start=1):
+        ws.cell(row=start, column=i, value=h)
+    head(ws, start, len(COLS))
+
+    by_group = defaultdict(list)
+    for r in items:
+        by_group[group_of(r["Наименование"])].append(r)
+    order = [g for g in GROUPS if g in by_group]
+    order += [g for g in sorted(by_group) if g not in GROUPS]
+
+    row = start
+    k = 0
+    for group in order:
+        rows_in = sorted(by_group[group],
+                         key=lambda r: (r["Ду"] or 9999, r["Наименование"]))
+        row += 1
+        qty = sum(r["Штук"] for r in rows_in)
+        kg_group = sum(r["вес"] for r in rows_in)
+        kg_text = f"{kg_group:,.0f}".replace(",", " ")
+        ws.cell(row=row, column=1,
+                value=f"{group} — {len(rows_in)} "
+                      f"{plural(len(rows_in), 'позиция', 'позиции', 'позиций')}"
+                      f", {qty:.0f} шт, {kg_text} кг")
+        for c in range(1, len(COLS) + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = GROUP_FILL
+            cell.font = SUB
+            cell.border = BORDER
+        for r in rows_in:
+            row += 1
+            k += 1
+            fake = asrow(r)
+            values = [k, r["Наименование"], r["Чертеж"], r["Ду"], r["Ру"],
+                      r["Состояние"], r["Штук"], round(r["вес_ед"], 1),
+                      round(r["вес"]), round(r["объем"], 3),
+                      r["Выделено"], r["Блок"], TIERS[tier(fake)][0],
+                      pack_type(fake), r["Откуда"], r["Цена"],
+                      r["Ориентир"]]
+            for i, v in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=i, value=v)
+                cell.font = BASE
+                cell.border = BORDER
+                cell.alignment = Alignment(vertical="top",
+                                           wrap_text=(i in (2, 12, 14)))
+                if i == 7:
+                    cell.font = BOLD
+                if i == 8:
+                    cell.number_format = "#,##0.0"
+                if i == 9:
+                    cell.number_format = "#,##0"
+                if i == 10:
+                    cell.number_format = "#,##0.000"
+            if r["Выделено"]:
+                ws.cell(row=row, column=11).fill = MARK_FILL
+            if not r["Чертеж"]:
+                ws.cell(row=row, column=3).fill = NODRAW_FILL
+
+    last = row
+    row += 1
+    ws.cell(row=row, column=2, value="ИТОГО ПО КОНТЕЙНЕРУ").font = BOLD
+    for col, fmt in ((7, "#,##0"), (9, "#,##0"), (10, "#,##0.0")):
+        cell = ws.cell(row=row, column=col,
+                       value=sum(r["Штук" if col == 7 else
+                                   "вес" if col == 9 else "объем"]
+                                 for r in items))
         cell.font = BOLD
         cell.border = BORDER
-        cell.number_format = "#,##0"
+        cell.number_format = fmt
 
-    # ярусы именно этого контейнера
-    row = last + 3
+    row += 2
     ws.cell(row=row, column=1, value="Укладка в этом контейнере").font = SUB
     row += 1
     for i, h in enumerate(["Ярус", "Что кладем", "Чем перекладываем сверху",
                            "Вес яруса, кг"], start=1):
         ws.cell(row=row, column=i, value=h)
     head(ws, row, 4, height=24)
-
-    tiers = defaultdict(float)
-    for r in items:
-        tiers[tier(r)] += r["вес"]
     row += 1
     for i, v in enumerate([FLOOR[0], FLOOR[1], FLOOR[2], "—"], start=1):
         cell = ws.cell(row=row, column=i, value=v)
         cell.font = BASE
         cell.border = BORDER
-        cell.fill = SUB_FILL
+        cell.fill = GROUP_FILL
         cell.alignment = Alignment(vertical="top", wrap_text=(i in (2, 3)))
     for t in sorted(TIERS):
         row += 1
         label, what, board = TIERS[t]
-        for i, v in enumerate([label, what, board, round(tiers[t])],
-                              start=1):
+        for i, v in enumerate([label, what, board, round(tkg[t])], start=1):
             cell = ws.cell(row=row, column=i, value=v)
             cell.font = BASE
             cell.border = BORDER
@@ -320,9 +675,8 @@ def sheet_box(wb, n, items, load):
             if i == 4:
                 cell.number_format = "#,##0"
 
-    ws.auto_filter.ref = f"A{start}:O{last}"
-    ws.freeze_panes = f"F{start + 1}"
-    widths(ws, [5, 26, 15, 22, 10, 48, 20, 8, 11, 12, 15, 11, 32, 14, 30])
+    ws.freeze_panes = f"C{start + 1}"
+    widths(ws, [w for _, w in COLS])
     return ws
 
 
@@ -330,9 +684,8 @@ def sheet_packing(wb):
     ws = wb.create_sheet("Упаковка и крепление")
     ws["A1"] = "Как паковать, чтобы доехало без помятых фланцев"
     ws["A1"].font = TITLE
-    ws["A2"] = ("Правила одинаковы для обоих контейнеров. Дорога "
-                "занимает около месяца, с продольными ударами при "
-                "маневрировании.")
+    ws["A2"] = ("Правила одинаковы для обоих контейнеров. Дорога занимает "
+                "около месяца, с продольными ударами при маневрировании.")
     ws["A2"].font = NOTE
     for i, h in enumerate(["№", "Правило", "Почему так"], start=1):
         ws.cell(row=4, column=i, value=h)
@@ -350,13 +703,16 @@ def sheet_packing(wb):
 
 
 def main():
-    boxes, load, rest = split()
+    boxes, load, tkg, rest, moves = split()
 
     wb = Workbook()
     wb.remove(wb.active)
-    sheet_summary(wb, boxes, load, rest)
+    sheet_summary(wb, boxes, load, tkg, rest, moves)
+    sheet_balance(wb, boxes, load, tkg)
     for n in sorted(boxes):
-        sheet_box(wb, n, boxes[n], load[n])
+        sheet_box(wb, n, boxes[n], load[n], tkg[n])
+    if moves:
+        sheet_moves(wb, moves)
     sheet_packing(wb)
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -368,16 +724,24 @@ def main():
         kg, m3 = load[n]
         items = boxes[n]
         print(f"{NAMES[n]}: {len(items):>3} поз, "
-              f"{sum(r['Наличие'] for r in items):>5.0f} шт, "
-              f"{kg / 1000:>5.1f} т ({kg / BOX_KG * 100:>3.0f}%), "
-              f"{m3:>4.1f} куб.м ({m3 / BOX_M3 * 100:>3.0f}%), "
-              f"{sum(r['Сумма'] for r in items) / 1e6:>5.1f} млн")
+              f"{sum(r['Штук'] for r in items):>5.0f} шт, "
+              f"{kg / 1000:>5.2f} т груза + {board_kg(kg):>3.0f} кг доски "
+              f"({(kg + board_kg(kg)) / BOX_KG * 100:>3.0f}% лимита), "
+              f"{m3:>4.1f} куб.м ({m3 / BOX_M3 * 100:>3.0f}%)")
+    print()
+    for t in sorted(TIERS):
+        print(f"{TIERS[t][0]:<22}{tkg[1][t]:>9,.0f} кг{tkg[2][t]:>10,.0f} кг"
+              f"   перекос {abs(tkg[1][t] - tkg[2][t]):>6,.0f} кг"
+              .replace(",", " "))
+    print(f"\nподелено по штукам позиций: {len(moves)}")
     if rest:
         print(f"не влезло: {len(rest)} поз, "
-              f"{sum(r['вес'] for r in rest) / 1000:.1f} т, "
-              f"{sum(r['Сумма'] for r in rest) / 1e6:.1f} млн")
+              f"{sum(r['вес'] for r in rest) / 1000:.2f} т")
     else:
-        print("не влезло: ничего, вся арматура уезжает")
+        print("не влезло: ничего, весь перечень уезжает")
+    print(f"погрузка в один день: {loading_cost(True):,.0f} руб, "
+          f"разными днями: {loading_cost(False):,.0f} руб"
+          .replace(",", " "))
 
 
 if __name__ == "__main__":

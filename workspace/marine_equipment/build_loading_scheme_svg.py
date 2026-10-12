@@ -1,27 +1,37 @@
 #!/usr/bin/env python3
-"""Схема загрузки сорокафутового контейнера, вид сбоку и сверху.
+"""Схемы загрузки контейнеров, вид сбоку и вид сверху.
 
-Рисуем то, что посчитано в build_container_spb: клинкеты Ду200 и выше
-одним слоем на настил, поверх и рядом ящики с мелочью, фильтры верхом.
-Масштаб честный, 100 пикселей на метр, поэтому по картинке видно, где
-на самом деле остается место.
+Рисуем оба варианта: один сорокафутовый по build_container_spb и два
+двадцатифутовых с равной развеской по build_two_containers. Клинкеты
+Ду200 и выше одним слоем на настил, поверх и рядом ящики с мелочью,
+фильтры верхом. Масштаб честный, 100 пикселей на метр, поэтому по
+картинке видно, где на самом деле остается место — и видно, насколько
+ниже пирог в двадцатифутовых.
 
 Результат: outputs/marine_equipment/Схема_загрузки_40ф.svg
+           outputs/marine_equipment/Схема_загрузки_2х20ф.svg
 """
 
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from build_container_spb import (  # noqa: E402
-    BOX_KG, FLOOR_AREA, FLOOR_L, FLOOR_W, asrow, collect,
+from build_container_spb import asrow, collect  # noqa: E402
+from build_two_containers import (  # noqa: E402
+    BOX_KG as BOX20_KG, BOX_LIMIT_KG as CRATE_KG, BOX_M3 as BOX20_M3,
+    NAMES, split,
 )
 from build_shipment_spb import item_kind, tier  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
-# внутренняя высота сорокафутового
-HEIGHT = 2.393
+# геометрия внутри контейнера, метры
+FORTY = dict(L=12.032, W=2.352, H=2.393, m3=67.2, kg=26_000,
+             title="Сорокафутовый контейнер")
+TWENTY = dict(L=5.898, W=2.352, H=2.393, m3=BOX20_M3, kg=BOX20_KG,
+              title="Двадцатифутовый контейнер")
+for _b in (FORTY, TWENTY):
+    _b["area"] = _b["L"] * _b["W"]
 BOX_L, BOX_W, BOX_H = 1.2, 1.0, 0.91
 BOARD = 0.025
 
@@ -63,42 +73,45 @@ def line(x1, y1, x2, y2, stroke=MUTED, sw=1, dash=""):
             f'y2="{y2:.1f}" stroke="{stroke}" stroke-width="{sw}"{d}/>')
 
 
-def plan():
+def plan(box, items, rest_kg, title):
     """Числа для схемы из того же расчета, что и таблицы."""
-    a, b, rest, kg, m3 = collect()
-    items = a + b
+    kg = sum(r["вес"] for r in items)
+    m3 = sum(r["объем"] for r in items)
     gates = [r for r in items
              if item_kind(asrow(r)) == "клинкет (задвижка)"
              and (r["Ду"] or 0) >= 200]
     gate_area = sum((((r["Ду"] or 100) / 1000 + 0.20) ** 2) * r["Штук"]
                     for r in gates)
-    gate_len = gate_area / FLOOR_W           # длина зоны клинкетов
-    gate_h = max(((r["Ду"] or 100) / 1000 + 0.15) for r in gates)
+    gate_len = gate_area / box["W"]          # длина зоны клинкетов
+    gate_h = max([((r["Ду"] or 100) / 1000 + 0.15) for r in gates] or [0.3])
 
     boxed = [r for r in items if tier(asrow(r)) in (3, 4)]
     filters = [r for r in boxed
                if item_kind(asrow(r)) == "фильтр забортной воды"]
-    boxes = int(-(-sum(r["вес"] for r in boxed) // BOX_KG))
-    return dict(
-        kg=kg, m3=m3, items=len(items),
+    crates = int(-(-sum(r["вес"] for r in boxed) // CRATE_KG))
+    p = dict(box)
+    p.update(
+        name=title, kg=kg, m3=m3, items=len(items),
         units=sum(r["Штук"] for r in items),
         gate_units=sum(r["Штук"] for r in gates),
         gate_kg=sum(r["вес"] for r in gates),
-        gate_area=gate_area, gate_len=gate_len, gate_h=gate_h,
-        box_count=boxes, box_kg=sum(r["вес"] for r in boxed),
+        gate_area=gate_area, gate_len=min(gate_len, box["L"] * 0.92),
+        gate_h=gate_h,
+        box_count=crates, box_kg=sum(r["вес"] for r in boxed),
         filt_kg=sum(r["вес"] for r in filters),
-        rest_kg=sum(r["вес"] for r in rest),
+        rest_kg=rest_kg,
     )
+    return p
 
 
 def side_view(p, x0, y0):
     """Вид сбоку: разрез по длине контейнера."""
     out = []
-    w, h = FLOOR_L * PX, HEIGHT * PX
+    w, h = p['L'] * PX, p['H'] * PX
     out.append(text(x0, y0 - 34, "Вид сбоку, разрез по длине", 17,
                     INK, weight="bold"))
     out.append(text(x0, y0 - 14,
-                    f"Внутри {FLOOR_L:.2f} x {HEIGHT:.2f} м. "
+                    f"Внутри {p['L']:.2f} x {p['H']:.2f} м. "
                     "Масштаб честный: где пусто на рисунке, там пусто и "
                     "в контейнере", 12, MUTED))
     out.append(rect(x0, y0, w, h, BG, INK, 2))
@@ -136,7 +149,7 @@ def side_view(p, x0, y0):
                     "ящики на клинкетах", 12, "#1f3a28", "middle"))
 
     free_x = x0 + gl
-    free_len = FLOOR_L - p["gate_len"]
+    free_len = p['L'] - p["gate_len"]
     n_free = int(free_len / BOX_L)
     for lvl, (yy, col) in enumerate(((base - BOARD * PX - bh, BOX1),
                                      (base - BOARD * PX - 2 * bh, BOX2))):
@@ -168,7 +181,7 @@ def side_view(p, x0, y0):
         out.append(line(x0 - 8, yy, x0 + w, yy, MUTED, 0.6, "4 3"))
         out.append(text(x0 + w + 10, yy + 4, f"{val:.2f} м — {label}", 11,
                         MUTED))
-    out.append(text(x0 + w + 10, y0 + 12, f"{HEIGHT:.2f} м — потолок", 11,
+    out.append(text(x0 + w + 10, y0 + 12, f"{p['H']:.2f} м — потолок", 11,
                     MUTED))
     return "\n".join(out), h
 
@@ -176,14 +189,14 @@ def side_view(p, x0, y0):
 def top_view(p, x0, y0):
     """Вид сверху: что где стоит на полу."""
     out = []
-    w, h = FLOOR_L * PX, FLOOR_W * PX
+    w, h = p['L'] * PX, p['W'] * PX
     out.append(text(x0, y0 - 34, "Вид сверху, план пола", 17, INK,
                     weight="bold"))
     out.append(text(x0, y0 - 14,
-                    f"Пол {FLOOR_L:.2f} x {FLOOR_W:.2f} = "
-                    f"{FLOOR_AREA:.1f} кв. м. Клинкеты занимают "
+                    f"Пол {p['L']:.2f} x {p['W']:.2f} = "
+                    f"{p['area']:.1f} кв. м. Клинкеты занимают "
                     f"{p['gate_area']:.1f} кв. м, это "
-                    f"{p['gate_area'] / FLOOR_AREA * 100:.0f}% пола",
+                    f"{p['gate_area'] / p['area'] * 100:.0f}% пола",
                     12, MUTED))
     out.append(rect(x0, y0, w, h, BG, INK, 2))
 
@@ -201,7 +214,7 @@ def top_view(p, x0, y0):
                     13, "#3b2f00", "middle", "bold"))
 
     free_x = x0 + gl
-    n_free = int((FLOOR_L - p["gate_len"]) / BOX_L)
+    n_free = int((p['L'] - p["gate_len"]) / BOX_L)
     for i in range(n_free):
         for j in range(2):
             out.append(rect(free_x + i * BOX_L * PX + 1,
@@ -216,7 +229,7 @@ def top_view(p, x0, y0):
                     f"{p['gate_len']:.2f} м", 12, INK, "middle"))
     out.append(line(free_x, y0 + h + 16, x0 + w, y0 + h + 16, INK, 1.2))
     out.append(text(free_x + (w - gl) / 2, y0 + h + 32,
-                    f"{FLOOR_L - p['gate_len']:.2f} м", 12, INK, "middle"))
+                    f"{p['L'] - p['gate_len']:.2f} м", 12, INK, "middle"))
     return "\n".join(out), h
 
 
@@ -240,20 +253,25 @@ def legend(p, x0, y0):
         out.append(text(x0 + 26, y, label, 13))
         y += 24
     y += 6
+    boards = p["kg"] / 1000 * 0.035 / (4.0 * 0.20 * 0.025)
     for label in [
         f"Всего в контейнере: {p['items']} позиций, {p['units']:.0f} штук, "
-        f"{p['kg'] / 1000:.2f} т, {p['m3']:.1f} из 67,2 куб. м",
-        f"Остается во Владивостоке {p['rest_kg'] / 1000:.2f} т",
+        f"{p['kg'] / 1000:.2f} т из {p['kg_lim'] / 1000:.0f}, "
+        f"{p['m3']:.1f} из {p['m3_lim']:.1f} куб. м",
+        (f"Остается во Владивостоке {p['rest_kg'] / 1000:.2f} т"
+         if p["rest_kg"] else "Во Владивостоке не остается ничего"),
         "Ящик не выше 0,91 м, иначе второй ярус не встает под потолок",
-        "Доска: 68 штук по 4 м, это 1,36 куб. м с запасом на обзол",
+        f"Доска: {boards:.0f} штук по 4 м, "
+        f"{p['kg'] / 1000 * 0.035:.2f} куб. м, "
+        f"{p['kg'] / 1000 * 0.035 * 700:.0f} кг",
     ]:
         out.append(text(x0, y, "— " + label, 12, MUTED))
         y += 20
     return "\n".join(out), y - y0
 
 
-def main():
-    p = plan()
+def draw(p):
+    """Один контейнер: вид сбоку, вид сверху, порядок погрузки."""
     x0 = PAD
     y_side = PAD + 40
     side, h_side = side_view(p, x0, y_side)
@@ -261,25 +279,57 @@ def main():
     top, h_top = top_view(p, x0, y_top)
     y_leg = y_top + h_top + GAP - 40
     leg, h_leg = legend(p, x0, y_leg)
-
-    width = int(x0 + FLOOR_L * PX + 240)
+    width = int(x0 + p["L"] * PX + 240)
     height = int(y_leg + h_leg + PAD)
-
-    svg = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
-        f'height="{height}" viewBox="0 0 {width} {height}">',
+    body = [
         f'<rect width="{width}" height="{height}" fill="{BG}"/>',
-        text(x0, PAD - 10,
-             "Загрузка сорокафутового контейнера, Владивосток — Петербург",
-             22, INK, weight="bold"),
-        side, top, leg, "</svg>",
+        text(x0, PAD - 10, p["name"], 22, INK, weight="bold"),
+        side, top, leg,
     ]
+    return body, width, height
+
+
+def save(path, blocks):
+    """Несколько контейнеров в одном файле, один под другим."""
+    width = max(w for _, w, _ in blocks)
+    height = sum(h for _, _, h in blocks)
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+           f'height="{height}" viewBox="0 0 {width} {height}">',
+           f'<rect width="{width}" height="{height}" fill="{BG}"/>']
+    y = 0
+    for body, _, h in blocks:
+        out.append(f'<g transform="translate(0,{y})">')
+        out.extend(body)
+        out.append("</g>")
+        y += h
+    out.append("</svg>")
     OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / "Схема_загрузки_40ф.svg"
-    path.write_text("\n".join(svg), encoding="utf-8")
+    path.write_text("\n".join(out), encoding="utf-8")
     print(f"готово: {path}")
-    print(f"клинкеты {p['gate_units']:.0f} шт на {p['gate_area']:.1f} кв. м "
-          f"({p['gate_len']:.2f} м длины), ящиков {p['box_count']}")
+
+
+def main():
+    # вариант 1: один сорокафутовый
+    a, b, rest, kg, m3 = collect()
+    forty = plan(FORTY, a + b, sum(r["вес"] for r in rest),
+                 "Загрузка сорокафутового контейнера, "
+                 "Владивосток — Петербург")
+    forty["kg_lim"], forty["m3_lim"] = FORTY["kg"], FORTY["m3"]
+    save(OUT / "Схема_загрузки_40ф.svg", [draw(forty)])
+
+    # вариант 2: два двадцатифутовых с равной развеской
+    boxes, load, tkg, left, moves = split()
+    blocks = []
+    for n in sorted(boxes):
+        pl = plan(TWENTY, boxes[n], sum(r["вес"] for r in left),
+                  f"{NAMES[n]} из двух: двадцатифутовый, "
+                  "Владивосток — Петербург")
+        pl["kg_lim"], pl["m3_lim"] = TWENTY["kg"], TWENTY["m3"]
+        blocks.append(draw(pl))
+        print(f"{NAMES[n]}: клинкеты {pl['gate_units']:.0f} шт на "
+              f"{pl['gate_area']:.1f} кв. м, ящиков {pl['box_count']}, "
+              f"{pl['kg'] / 1000:.2f} т, {pl['m3']:.1f} куб. м")
+    save(OUT / "Схема_загрузки_2х20ф.svg", blocks)
 
 
 if __name__ == "__main__":

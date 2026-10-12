@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1513" height="1110" viewBox="0 0 1513 1110">
 <rect width="1513" height="1110" fill="#ffffff"/>
+<g transform="translate(0,0)">
+<rect width="1513" height="1110" fill="#ffffff"/>
 <text x="70" y="60" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#1F3864" text-anchor="start" font-weight="bold">Загрузка сорокафутового контейнера, Владивосток — Петербург</text>
 <text x="70" y="76" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#1F3864" text-anchor="start" font-weight="bold">Вид сбоку, разрез по длине</text>
 <text x="70" y="96" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">Внутри 12.03 x 2.39 м. Масштаб честный: где пусто на рисунке, там пусто и в контейнере</text>
@@ -87,8 +89,9 @@
 <text x="96" y="906" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">5. Ящики верхнего яруса, что полегче</text>
 <rect x="70.0" y="919.5" width="16.0" height="14.0" fill="#E4A672" stroke="#1F3864" stroke-width="1.2"/>
 <text x="96" y="930" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">6. Фильтры сверху, 2.1 т, над углами ящиков</text>
-<text x="70" y="960" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Всего в контейнере: 284 позиций, 2866 штук, 25.82 т, 37.7 из 67,2 куб. м</text>
+<text x="70" y="960" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Всего в контейнере: 284 позиций, 2866 штук, 25.82 т из 26, 37.7 из 67.2 куб. м</text>
 <text x="70" y="980" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Остается во Владивостоке 1.48 т</text>
 <text x="70" y="1000" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Ящик не выше 0,91 м, иначе второй ярус не встает под потолок</text>
-<text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 68 штук по 4 м, это 1,36 куб. м с запасом на обзол</text>
+<text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 45 штук по 4 м, 0.90 куб. м, 633 кг</text>
+</g>
 </svg>
