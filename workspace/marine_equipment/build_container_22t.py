@@ -121,7 +121,7 @@ def priority(r):
     return (first, -ppk)
 
 
-def collect():
+def collect(limit_kg=LIMIT_KG, limit_m3=LIMIT_M3):
     spb = read_spb()
     real = real_weights(spb)
 
@@ -211,7 +211,7 @@ def collect():
     m3 = sum(r["объем"] for r in block_a)
     block_b, rest = [], []
     for r in candidates:
-        if kg + r["вес"] <= LIMIT_KG and m3 + r["объем"] <= LIMIT_M3:
+        if kg + r["вес"] <= limit_kg and m3 + r["объем"] <= limit_m3:
             block_b.append(r)
             kg += r["вес"]
             m3 += r["объем"]
