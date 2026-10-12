@@ -90,9 +90,10 @@ def plan(box, items, rest_kg, title):
     gate_len = gate_area / box["W"]          # длина зоны клинкетов
     gate_h = max([((r["Ду"] or 100) / 1000 + 0.15) for r in gates] or [0.3])
 
-    boxed = [r for r in items if tier(asrow(r)) in (3, 4)]
-    filters = [r for r in boxed
-               if item_kind(asrow(r)) == "фильтр забортной воды"]
+    # в ящики идет только третий ярус: фильтры и титан верхнего яруса
+    # едут в обрешетке поверх ящиков, а не внутри них
+    boxed = [r for r in items if tier(asrow(r)) == 3]
+    filters = [r for r in items if tier(asrow(r)) == 4]
     crates = int(-(-sum(r["вес"] for r in boxed) // CRATE_KG))
     p = dict(box)
     p.update(

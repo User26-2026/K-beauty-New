@@ -387,6 +387,14 @@ def sheet_stowage(wb, items, kg):
         ("Не хватает мест", max(0, nbox - places),
          "если не ноль — столько ящиков в корпус не встает, это и есть "
          "нехватка объема"),
+        ("Ящиков встанет на клинкеты", min(nbox, over),
+         "на свободном полу мест нет, вся мелочь идет поверх задвижек"),
+        ("Вес поверх клинкетов, кг",
+         round(min(nbox, over) * (tkg[3] / nbox) + tkg[4]),
+         "ящики плюс фильтры и титан на них"),
+        ("Нагрузка на клинкеты, кг/кв. м",
+         round((min(nbox, over) * (tkg[3] / nbox) + tkg[4]) / gate_area),
+         "в двух двадцатифутовых выходит втрое меньше"),
     ]:
         ws.cell(row=row, column=1, value=label).font = BASE
         cell = ws.cell(row=row, column=2, value=value)
