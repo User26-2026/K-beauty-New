@@ -25,7 +25,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from build_container_22t import (  # noqa: E402
+from build_container_spb import (  # noqa: E402
     BOX_KG, BOX_PER_LAYER, asrow, collect, sheet_items,
 )
 from build_shipment_spb import tier  # noqa: E402
