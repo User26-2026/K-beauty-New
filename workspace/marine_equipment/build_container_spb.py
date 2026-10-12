@@ -43,6 +43,7 @@ from build_spb_list_xlsx import (  # noqa: E402
     GROUPS, group_of, read as read_spb,
 )
 from build_weight_xlsx import du, unit_weight as ref_weight  # noqa: E402
+import gate_geometry as gg  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
@@ -847,6 +848,194 @@ def sheet_packing(wb):
     return ws
 
 
+CRATE_KG = 600
+
+
+def stowage(items, floor_l=FLOOR_L):
+    """Раскладка нижнего яруса и то, что ложится на клинкеты."""
+    counts = defaultdict(int)
+    for r in items:
+        if (tier(asrow(r)) == 1
+                and item_kind(asrow(r)) == "клинкет (задвижка)"):
+            counts[int(r["Ду"] or 0)] += int(r["Штук"])
+    rows = gg.rows_of(counts)
+    gg.place(rows, floor_l)
+    glen = sum(r["depth"] for r in rows)
+    one_layer = glen <= floor_l
+    gl = glen if one_layer else floor_l
+    free_l = floor_l - gl
+    stack = max((r["stack"] for r in rows), default=0.0)
+    h_gates = gg.BOARD + (stack + gg.BOARD) * (1 if one_layer else 2)
+    tiers_over = int((gg.HEIGHT - h_gates) / gg.CRATE_H)
+
+    kg3 = sum(r["вес"] for r in items if tier(asrow(r)) == 3)
+    kg4 = sum(r["вес"] for r in items if tier(asrow(r)) == 4)
+
+    # крупные фильтры ставим на свободную полосу пола, а не на ящики:
+    # они тяжелые, и наверху это лишний груз и центр тяжести
+    big = [r for r in items
+           if item_kind(asrow(r)) == "фильтр забортной воды"
+           and (r["Ду"] or 0) >= 200]
+    big_kg = sum(r["вес"] for r in big)
+    big_qty = sum(r["Штук"] for r in big)
+    big_area = sum((((r["Ду"] or 200) / 1000 + 0.25) ** 2) * r["Штук"]
+                   for r in big)
+    floor_free_area = free_l * FLOOR_W
+    big_fits = big_area <= floor_free_area
+
+    # мелкие фильтры и титан едут внутри ящиков: два яруса ящиков
+    # поверх клинкетов упираются в потолок, сверху места уже нет
+    small_kg = kg4 - big_kg if big_fits else 0
+    in_crates = kg3 + small_kg
+    crates = max(1, int(in_crates // CRATE_KG)
+                 + (1 if in_crates % CRATE_KG else 0))
+
+    free_places = int(free_l / gg.CRATE_L) * 2 * 2 if not big_fits else 0
+    over_places = int(gl / gg.CRATE_L) * 2 * tiers_over
+    on_gates = max(0, crates - free_places)
+    kg_top = min(on_gates, over_places) * (in_crates / crates)
+    if not big_fits:
+        kg_top += kg4
+    area = gl * FLOOR_W
+    return dict(
+        counts=counts, rows=rows, layers=1 if one_layer else 2, glen=glen,
+        gl=gl, free_l=free_l, stack=stack, h_gates=h_gates,
+        tiers_over=tiers_over, crates=crates, free_places=free_places,
+        over_places=over_places, on_gates=min(on_gates, over_places),
+        kg_top=kg_top, area=area, press=kg_top / area if area else 0,
+        kg3=kg3, kg4=kg4, big_kg=big_kg, big_qty=big_qty,
+        small_kg=small_kg, in_crates=in_crates,
+        big_area=big_area, big_fits=big_fits,
+        floor_free_area=floor_free_area,
+    )
+
+
+def sheet_stowage(wb, items):
+    ws = wb.create_sheet("Укладка и нагрузка")
+    st = stowage(items)
+    ws["A1"] = "Укладка: клинкеты в один слой, нагрузка на нижний ряд"
+    ws["A1"].font = TITLE
+    ws["A2"] = ("Сорокафутовый берет все клинкеты одним слоем: они просят "
+                f"{st['glen']:.2f} м пола при длине {FLOOR_L} м. Задвижка на "
+                "задвижку не кладется, и это главное отличие от "
+                "двадцатифутового.")
+    ws["A2"].font = NOTE
+
+    row = 4
+    ws.cell(row=row, column=1, value="Нижний ярус: клинкеты").font = SUB
+    row += 1
+    for label, value, note in [
+        ("Клинкетов, шт", sum(st["counts"].values()), ""),
+        ("Рядов поперек контейнера", len(st["rows"]),
+         "Ду350 и Ду300 по 2 в ряд, Ду250 по 2, Ду200 по 3"),
+        ("Просят пола, м", round(st["glen"], 2), f"пол {FLOOR_L} м"),
+        ("СЛОЕВ КЛИНКЕТОВ", st["layers"],
+         "один слой — задвижка на задвижку не ложится"),
+        ("Остается свободного пола, м", round(st["free_l"], 2),
+         f"это {st['floor_free_area']:.1f} кв. м"),
+        ("Высота пирога клинкетов с досками, м", round(st["h_gates"], 2),
+         f"до потолка {gg.HEIGHT - st['h_gates']:.2f} м"),
+        ("Ярусов ящиков встает сверху", st["tiers_over"], ""),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BASE
+        cell = ws.cell(row=row, column=2, value=value)
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.number_format = "#,##0.00" if isinstance(value, float) else "#,##0"
+        if label == "СЛОЕВ КЛИНКЕТОВ":
+            cell.fill = A_FILL if value == 1 else NODRAW_FILL
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="Ряд за рядом").font = SUB
+    row += 1
+    for i, h in enumerate(["Ряд", "Что кладем", "Штук в ряду",
+                           "Глубина ряда, м", "Нарастающим, м"], start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, 5, height=24)
+    for k, r in enumerate(st["rows"], start=1):
+        row += 1
+        for i, v in enumerate([k, f"Клинкет Ду{r['du']}", r["qty"],
+                               round(r["depth"], 2), round(r["used"], 2)],
+                              start=1):
+            cell = ws.cell(row=row, column=i, value=v)
+            cell.font = BASE
+            cell.border = BORDER
+            if i in (4, 5):
+                cell.number_format = "#,##0.00"
+
+    row += 2
+    ws.cell(row=row, column=1, value="Фильтры и ящики").font = SUB
+    row += 1
+    for label, value, note in [
+        ("Крупных фильтров Ду200 и выше, шт", st["big_qty"],
+         f"{st['big_kg']:.0f} кг"),
+        ("Просят пола, кв. м", round(st["big_area"], 1),
+         f"свободно {st['floor_free_area']:.1f} кв. м"),
+        ("Ставим их на пол", "да" if st["big_fits"] else "не помещаются",
+         "на свободную полосу, а не поверх ящиков: они тяжелые, и "
+         "наверху это лишний груз и центр тяжести"),
+        ("Мелкие фильтры и титан в ящики, кг", round(st["small_kg"]),
+         "два яруса ящиков упираются в потолок, сверху места нет"),
+        ("Ящиков с мелочью", st["crates"],
+         f"по {CRATE_KG} кг, всего в ящиках {st['in_crates']:.0f} кг"),
+        ("Мест под ящики поверх клинкетов", st["over_places"],
+         f"{st['tiers_over']} яруса"),
+        ("Ящиков встанет на клинкеты", st["on_gates"], ""),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BASE
+        cell = ws.cell(row=row, column=2, value=value)
+        cell.font = BOLD
+        cell.border = BORDER
+        if isinstance(value, (int, float)):
+            cell.number_format = "#,##0.0" if isinstance(value, float) else "#,##0"
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="Нагрузка на нижний ярус").font = SUB
+    row += 1
+    for label, value, note in [
+        ("Вес поверх клинкетов, кг", round(st["kg_top"]),
+         "только ящики: крупные фильтры сняты на пол"),
+        ("Площадь под клинкетами, кв. м", round(st["area"], 1), ""),
+        ("Нагрузка, кг на кв. м", round(st["press"]),
+         "в двух двадцатифутовых выходит 511 и 631, в усиленном "
+         "клинкеты лежат в два слоя"),
+        ("В мегапаскалях", round(st["press"] * 9.81 / 1e6, 4),
+         "бронза держит около 200 МПа, запас в десятки тысяч раз"),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BASE
+        cell = ws.cell(row=row, column=2, value=value)
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.number_format = "#,##0.0000" if "паскал" in label else "#,##0"
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    for text in [
+        "Корпус задвижки такую нагрузку не замечает. Беречь надо шток, "
+        "маховик и привалочную поверхность фланца: кладем на бок штоком "
+        "горизонтально, съемные маховики снимаем в ящик с биркой, фланец "
+        "на фланец не кладем.",
+        "Прокладки под ящиками — строго над корпусами задвижек, шаг "
+        "300-400 мм. Доска 200 х 25 на пролете 600 мм выходит на предел "
+        "по изгибу, под угол ящика над пустотой ставим брус 50 х 50.",
+        "Свободная полоса у двери — это и запас на распорки. Пустоты "
+        "забиваем, месяц дороги дает продольные удары.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + text)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[row].height = 44
+        row += 1
+
+    widths(ws, [40, 16, 70, 16, 18])
+    return ws
+
+
 def main():
     a, b, rest, kg, m3 = collect()
 
@@ -859,6 +1048,7 @@ def main():
                 "со склада. Желтым помечен пустой чертеж.")
     sheet_items(wb, "Остается", "Что остается во Владивостоке", rest,
                 "Это второй борт: тяжелое и дешевое на килограмм.")
+    sheet_stowage(wb, a + b)
     sheet_boxes(wb, a + b)
     sheet_timber(wb, a + b)
     sheet_packing(wb)
