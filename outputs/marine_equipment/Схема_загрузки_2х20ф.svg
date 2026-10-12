@@ -24,7 +24,7 @@
 <text x="467" y="306" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#1f3a28" text-anchor="middle" font-weight="normal">ящики, нижний ярус</text>
 <text x="467" y="215" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#1f3a28" text-anchor="middle" font-weight="normal">ящики, верхний ярус</text>
 <rect x="288.2" y="119.8" width="360.0" height="45.0" fill="#E4A672" stroke="#1F3864" stroke-width="1.2"/>
-<text x="377" y="138" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#5a3519" text-anchor="start" font-weight="normal">фильтры, 1.2 т</text>
+<text x="377" y="138" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#5a3519" text-anchor="start" font-weight="normal">фильтры, 1.0 т</text>
 <line x1="62.0" y1="346.8" x2="659.8" y2="346.8" stroke="#6b7280" stroke-width="0.6" stroke-dasharray="4 3"/>
 <text x="670" y="351" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6b7280" text-anchor="start" font-weight="normal">0.03 м — настил 25 мм</text>
 <line x1="62.0" y1="301.8" x2="659.8" y2="301.8" stroke="#6b7280" stroke-width="0.6" stroke-dasharray="4 3"/>
@@ -63,15 +63,15 @@
 <rect x="70.0" y="847.5" width="16.0" height="14.0" fill="#B08968" stroke="#1F3864" stroke-width="1.2"/>
 <text x="96" y="858" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">3. Настил доской поверх клинкетов, над корпусами, а не над маховиками</text>
 <rect x="70.0" y="871.5" width="16.0" height="14.0" fill="#8FB996" stroke="#1F3864" stroke-width="1.2"/>
-<text x="96" y="882" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">4. Ящики нижнего яруса, самые тяжелые: всего ящиков 11, 6.0 т</text>
+<text x="96" y="882" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">4. Ящики нижнего яруса, самые тяжелые: всего ящиков 10, 5.9 т</text>
 <rect x="70.0" y="895.5" width="16.0" height="14.0" fill="#BFD8C4" stroke="#1F3864" stroke-width="1.2"/>
 <text x="96" y="906" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">5. Ящики верхнего яруса, что полегче</text>
 <rect x="70.0" y="919.5" width="16.0" height="14.0" fill="#E4A672" stroke="#1F3864" stroke-width="1.2"/>
-<text x="96" y="930" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">6. Фильтры сверху, 1.2 т, над углами ящиков</text>
-<text x="70" y="960" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Всего в контейнере: 107 позиций, 1953 штук, 13.77 т из 22, 19.2 из 33.0 куб. м</text>
+<text x="96" y="930" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">6. Фильтры сверху, 1.0 т, над углами ящиков</text>
+<text x="70" y="960" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Всего в контейнере: 113 позиций, 1707 штук, 13.70 т из 22, 19.0 из 33.0 куб. м</text>
 <text x="70" y="980" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Во Владивостоке не остается ничего</text>
 <text x="70" y="1000" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Ящик не выше 0,91 м, иначе второй ярус не встает под потолок</text>
-<text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 24 штук по 4 м, 0.48 куб. м, 337 кг</text>
+<text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 24 штук по 4 м, 0.48 куб. м, 336 кг</text>
 <text x="70" y="1040" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Мест под ящики: 16 — 4 над клинкетами и 12 на свободном полу, везде по два яруса</text>
 </g>
 <g transform="translate(0,1130)">
@@ -98,7 +98,7 @@
 <text x="460" y="306" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#1f3a28" text-anchor="middle" font-weight="normal">ящики, нижний ярус</text>
 <text x="460" y="215" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#1f3a28" text-anchor="middle" font-weight="normal">ящики, верхний ярус</text>
 <rect x="340.9" y="119.8" width="240.0" height="45.0" fill="#E4A672" stroke="#1F3864" stroke-width="1.2"/>
-<text x="430" y="138" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#5a3519" text-anchor="start" font-weight="normal">фильтры, 1.0 т</text>
+<text x="430" y="138" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#5a3519" text-anchor="start" font-weight="normal">фильтры, 0.9 т</text>
 <line x1="62.0" y1="346.8" x2="659.8" y2="346.8" stroke="#6b7280" stroke-width="0.6" stroke-dasharray="4 3"/>
 <text x="670" y="351" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6b7280" text-anchor="start" font-weight="normal">0.03 м — настил 25 мм</text>
 <line x1="62.0" y1="296.8" x2="659.8" y2="296.8" stroke="#6b7280" stroke-width="0.6" stroke-dasharray="4 3"/>
@@ -136,15 +136,15 @@
 <rect x="70.0" y="847.5" width="16.0" height="14.0" fill="#B08968" stroke="#1F3864" stroke-width="1.2"/>
 <text x="96" y="858" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">3. Настил доской поверх клинкетов, над корпусами, а не над маховиками</text>
 <rect x="70.0" y="871.5" width="16.0" height="14.0" fill="#8FB996" stroke="#1F3864" stroke-width="1.2"/>
-<text x="96" y="882" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">4. Ящики нижнего яруса, самые тяжелые: всего ящиков 10, 6.0 т</text>
+<text x="96" y="882" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">4. Ящики нижнего яруса, самые тяжелые: всего ящиков 10, 5.9 т</text>
 <rect x="70.0" y="895.5" width="16.0" height="14.0" fill="#BFD8C4" stroke="#1F3864" stroke-width="1.2"/>
 <text x="96" y="906" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">5. Ящики верхнего яруса, что полегче</text>
 <rect x="70.0" y="919.5" width="16.0" height="14.0" fill="#E4A672" stroke="#1F3864" stroke-width="1.2"/>
-<text x="96" y="930" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">6. Фильтры сверху, 1.0 т, над углами ящиков</text>
-<text x="70" y="960" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Всего в контейнере: 126 позиций, 950 штук, 13.54 т из 22, 19.5 из 33.0 куб. м</text>
+<text x="96" y="930" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1F3864" text-anchor="start" font-weight="normal">6. Фильтры сверху, 0.9 т, над углами ящиков</text>
+<text x="70" y="960" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Всего в контейнере: 118 позиций, 1195 штук, 13.60 т из 22, 19.3 из 33.0 куб. м</text>
 <text x="70" y="980" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Во Владивостоке не остается ничего</text>
 <text x="70" y="1000" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Ящик не выше 0,91 м, иначе второй ярус не встает под потолок</text>
-<text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 24 штук по 4 м, 0.47 куб. м, 332 кг</text>
+<text x="70" y="1020" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Доска: 24 штук по 4 м, 0.48 куб. м, 333 кг</text>
 <text x="70" y="1040" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280" text-anchor="start" font-weight="normal">— Мест под ящики: 16 — 8 над клинкетами и 8 на свободном полу, везде по два яруса</text>
 </g>
 </svg>

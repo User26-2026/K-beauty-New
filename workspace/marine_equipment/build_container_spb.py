@@ -42,6 +42,7 @@ from build_shipment_spb import (  # noqa: E402
 from build_spb_list_xlsx import (  # noqa: E402
     GROUPS, group_of, read as read_spb,
 )
+from shipments_done import shipped_off  # noqa: E402
 from build_weight_xlsx import du, unit_weight as ref_weight  # noqa: E402
 import gate_geometry as gg  # noqa: E402
 
@@ -178,6 +179,14 @@ def collect(limit_kg=LIMIT_KG, limit_m3=LIMIT_M3):
     rows = []
     for spec in SOURCES:
         rows.extend(parse(spec))
+    # фактически отгруженное снимаем с наличия. В списке менеджера
+    # отгрузка помечена в примечании, а в складском учете нет: без
+    # этого вычета уже уехавший товар второй раз попадает в контейнер
+    off = shipped_off()
+    for r in rows:
+        k = (r["Наименование"], r["Локация"])
+        if k in off and r["Наличие"]:
+            r["Наличие"] = max(0, r["Наличие"] - off[k])
     for r in rows:
         r["Сумма"] = (r["Наличие"] or 0) * (r["Цена за ед., руб"] or 0)
     live = [r for r in rows if (r["Наличие"] or 0) > 0]
