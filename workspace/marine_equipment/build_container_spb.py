@@ -72,6 +72,15 @@ LIMIT_M3 = 67.2
 BOX_KG = 600
 BOX_M3 = 0.9
 BOX_SIZE = "1200 x 1000 x 910 мм, на поддоне"
+# пол сорокафутового
+FLOOR_L, FLOOR_W = 12.032, 2.352
+FLOOR_AREA = FLOOR_L * FLOOR_W
+# доска необрезная 25 мм: кубометр на сорок квадратов настила
+BOARD_MM = 25
+# товарная доска 4 м, средняя ширина обзольной доски около 20 см
+BOARD_L, BOARD_W = 4.0, 0.20
+# обзол, подгонка и бой: необрезную всегда берут с запасом
+BOARD_WASTE = 1.25
 # пол сорокафутового 12,03 х 2,35 м: ящиков 1,2 х 1,0 влезает 22 в ярус
 BOX_PER_LAYER = 22
 
@@ -689,6 +698,136 @@ def sheet_boxes(wb, items):
     return ws
 
 
+def sheet_timber(wb, items):
+    """Сколько необрезной доски 25 мм купить на перекладку.
+
+    Считаем по площадям настилов, а не на глаз. Настил идет под
+    клинкеты, поверх клинкетов под ящики, прокладками внутри ящиков
+    между рядами арматуры, плюс распорки и клинья.
+    """
+    ws = wb.create_sheet("Лес на перекладку")
+    ws["A1"] = "Сколько доски купить"
+    ws["A1"].font = TITLE
+    ws["A2"] = (f"Доска необрезная {BOARD_MM} мм. Пол контейнера "
+                f"{FLOOR_L:.2f} x {FLOOR_W:.2f} = {FLOOR_AREA:.1f} кв. м. "
+                "Количество считано по площади настилов с запасом "
+                f"{(BOARD_WASTE - 1) * 100:.0f}% на обзол и подгонку.")
+    ws["A2"].font = NOTE
+
+    gates = [r for r in items
+             if item_kind(asrow(r)) == "клинкет (задвижка)"
+             and (r["Ду"] or 0) >= 200]
+    gate_area = sum((((r["Ду"] or 100) / 1000 + 0.20) ** 2) * r["Штук"]
+                    for r in gates)
+    boxed = [r for r in items if tier(asrow(r)) in (3, 4)]
+    boxes = int(-(-sum(r["вес"] for r in boxed) // BOX_KG))
+
+    row = 4
+    for label, value, note in [
+        ("Клинкеты Ду200 и выше",
+         f"{sum(r['Штук'] for r in gates):.0f} шт",
+         f"{sum(r['вес'] for r in gates) / 1000:.2f} т"),
+        ("Их пятно на полу", f"{gate_area:.1f} кв. м",
+         f"{gate_area / FLOOR_AREA * 100:.0f}% пола — ложатся одним слоем, "
+         "второй ярус клинкетов не нужен"),
+        ("Ящиков", f"{boxes} шт", f"{BOX_SIZE}"),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BOLD
+        ws.cell(row=row, column=2, value=value).font = BOLD
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    cols = ["Куда идет доска", "Площадь, кв. м", "Пояснение"]
+    for i, h in enumerate(cols, start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, 3, height=24)
+
+    # прокладки внутри ящика: два ряда, доской закрыто около трети
+    inside = boxes * 1.2 * 1.0 * 0.3 * 2
+    lines = [
+        ("Настил на пол под клинкеты", gate_area,
+         "сплошной, чтобы задвижка стояла на доске, а не на рифленом "
+         "железе"),
+        ("Настил поверх клинкетов", gate_area,
+         "по нему встают ящики, доска ложится над корпусами, а не над "
+         "маховиками"),
+        ("Прокладки внутри ящиков", inside,
+         f"{boxes} ящиков, по два прокладочных ряда, доской закрыта "
+         "примерно треть площади"),
+    ]
+    total = sum(x[1] for x in lines)
+    lines.append(("Распорки, клинья, подгонка", total * 0.10,
+                  "десятая часть от настилов"))
+    total = sum(x[1] for x in lines)
+
+    first = row + 1
+    for label, area, note in lines:
+        row += 1
+        for i, v in enumerate([label, round(area, 1), note], start=1):
+            cell = ws.cell(row=row, column=i, value=v)
+            cell.font = BASE
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=(i == 3))
+            if i == 2:
+                cell.number_format = "#,##0.0"
+    row += 1
+    ws.cell(row=row, column=1, value="ИТОГО площадь настилов").font = BOLD
+    cell = ws.cell(row=row, column=2, value=f"=SUM(B{first}:B{row - 1})")
+    cell.font = BOLD
+    cell.border = BORDER
+    cell.number_format = "#,##0.0"
+
+    row += 2
+    ws.cell(row=row, column=1, value="Сколько это в лесе").font = SUB
+    row += 1
+    volume = total * BOARD_MM / 1000
+    with_waste = volume * BOARD_WASTE
+    per_board = BOARD_L * BOARD_W
+    boards = int(-(-total * BOARD_WASTE // per_board))
+    for label, value, note in [
+        ("Чистый объем доски, куб. м", round(volume, 2),
+         f"{total:.1f} кв. м настила толщиной {BOARD_MM} мм"),
+        ("С запасом на обзол и подгонку, куб. м", round(with_waste, 2),
+         f"коэффициент {BOARD_WASTE}"),
+        ("Доска 4 м, средняя ширина 20 см", f"{boards} шт",
+         f"одна доска закрывает {per_board:.1f} кв. м"),
+        ("Погонных метров", f"{boards * BOARD_L:.0f} м", ""),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BOLD
+        cell = ws.cell(row=row, column=2, value=value)
+        cell.font = BOLD
+        if isinstance(value, float):
+            cell.number_format = "#,##0.00"
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="Что еще купить").font = SUB
+    row += 1
+    for text in [
+        f"Поддоны под ящики — {boxes} штук плюс запас на бой.",
+        "Брус 50х50 на каркас ящиков: по четырем углам и по верхней "
+        "обвязке. Без него ящик на 600 кг складывается от первого же "
+        "удара на маневрировании.",
+        "Стяжные ремни для крепления к рымам и фанера на заглушки "
+        "фланцев.",
+        "Необрезную доску берут нестроганой и невысушенной — для "
+        "перекладки это нормально, но сырая доска тяжелее: "
+        f"{with_waste:.1f} куб. м это около "
+        f"{with_waste * 700:.0f} кг к весу контейнера. Это надо учесть "
+        "в лимите.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + text)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[row].height = 30
+        row += 1
+
+    widths(ws, [40, 20, 60])
+    return ws
+
+
 def sheet_packing(wb):
     ws = wb.create_sheet("Упаковка и крепление")
     ws["A1"] = "Как паковать, чтобы доехало без помятых фланцев"
@@ -721,6 +860,7 @@ def main():
     sheet_items(wb, "Остается", "Что остается во Владивостоке", rest,
                 "Это второй борт: тяжелое и дешевое на килограмм.")
     sheet_boxes(wb, a + b)
+    sheet_timber(wb, a + b)
     sheet_packing(wb)
 
     OUT.mkdir(parents=True, exist_ok=True)
