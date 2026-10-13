@@ -45,6 +45,7 @@ from build_marine_registry import SOURCES, parse  # noqa: E402
 from build_shipment_spb import FILTERS, material  # noqa: E402
 from build_spb_list_xlsx import GROUPS, group_of, read as read_spb  # noqa: E402
 from build_weight_xlsx import du  # noqa: E402
+import price_fixes  # noqa: E402
 import scrap_prices as scrap  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
@@ -112,10 +113,12 @@ def our_stock():
         price = r["Сумма"] / r["Штук"] if r["Сумма"] and r["Штук"] else 0
         if not price:
             # у списка менеджера цена записана текстом и диапазоном.
-            # По диапазону берем верхнюю границу, но где верх больше
-            # низа втрое — это опечатка, а не диапазон, и берем низ
+            # По диапазону берем верхнюю границу. Где верх больше низа
+            # втрое, это опечатка: берем подтвержденное исправление, а
+            # если его нет — нижнюю границу
             lo, hi, flag = our_price(r.get("Цена"))
-            price = (lo if flag else hi) or 0
+            fixed = price_fixes.fix(r["Наименование"])
+            price = ((fixed or lo) if flag else hi) or 0
         out.append({
             "Наименование": r["Наименование"],
             "Чертеж": r.get("Чертеж") or "",

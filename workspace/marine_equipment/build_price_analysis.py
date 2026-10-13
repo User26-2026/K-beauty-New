@@ -49,6 +49,8 @@ from build_spb_list_xlsx import read as read_spb  # noqa: E402
 from build_shipment_spb import item_kind, material  # noqa: E402
 from build_spb_list_xlsx import GROUPS, group_of  # noqa: E402
 from build_weight_xlsx import du as du_of  # noqa: E402
+import price_fixes  # noqa: E402
+from price_fixes import clean  # noqa: E402
 import scrap_prices as scrap  # noqa: E402
 
 FONT = "Arial"
@@ -163,27 +165,25 @@ def our_prices():
         # наша цена продажи, и по договору конкретную цену внутри
         # диапазона все равно согласовывать отдельно.
         #
-        # Исключение — запись, где верх больше низа втрое и выше: это
-        # не диапазон, а опечатка. «Фильтр забортной воды Ду100, 55-650»
-        # дал бы 650 000 при том, что Ду200 стоит 170 000. По таким
-        # берем нижнюю границу и помечаем строку
+        # Запись, где верх больше низа втрое и выше, — это не диапазон,
+        # а опечатка. Если такая опечатка подтверждена, берем
+        # исправленную цену, иначе нижнюю границу и помечаем строку
         lo, hi, flag = our_price(r["Цена по договору"])
-        price = (lo if flag else hi) or 0
+        fixed = price_fixes.fix(r["Наименование"])
+        if flag and fixed:
+            price, mark = fixed, " — опечатка в договоре, цена исправлена"
+        elif flag:
+            price = lo or 0
+            mark = " — запись сомнительная, взята нижняя граница"
+        else:
+            price, mark = hi or 0, ""
         if not price:
             continue
-        mark = " — запись сомнительная, взята нижняя граница" if flag else ""
         key = norm_draw(r["Обозначение"])
         if key:
             deal_draw.setdefault(key, (price, mark))
         deal_name.setdefault(clean(r["Наименование"]), (price, mark))
     return sale_draw, sale_name, deal_draw, deal_name
-
-
-def clean(name):
-    """Наименование к сопоставимому виду."""
-    s = str(name or "").lower().replace("ё", "е")
-    s = re.sub(r"[^а-я0-9]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
 
 
 def look(draw_idx, name_idx, draw, name):
