@@ -29,6 +29,7 @@ from openpyxl.utils import get_column_letter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from build_marine_registry import SOURCES, parse  # noqa: E402
 from build_catalog_xlsx import group_of  # noqa: E402
+import materials  # noqa: E402
 from build_weight_xlsx import unit_weight, du  # noqa: E402
 from build_container_plan import unit_volume  # noqa: E402
 from shipments_done import SHIPMENTS, cost, shipped_off  # noqa: E402
@@ -139,7 +140,10 @@ def hold(r):
     клапанные коробки уйдут следующей отгрузкой.
 
     Материал в учете проставлен у 33 позиций из 271: отсеять всю сталь
-    по названию нельзя, ее ловят при отборе на складе."""
+    по названию нельзя, ее ловят при отборе на складе. Сталь, названную
+    нам прямо, держит materials.py — по названию она не ловится."""
+    if materials.known(r["Наименование"], r.get("Чертеж")) == "сталь":
+        return HOLD_STEEL
     if STEEL.search(r["Наименование"] + " " + (r["Группа в файле"] or "")):
         return HOLD_STEEL
     if item_kind(r) == "коробка клапанная":
@@ -156,11 +160,16 @@ NERZH = re.compile(r"нерж", re.I)
 def material(r):
     """Материал позиции.
 
-    Вся наша арматура бронзовая или латунная, включая все клинкеты.
-    Стальными идут только паровой и редукционные клапаны, плюс то,
-    где сталь прямо написана в названии.
+    Сначала то, что подтверждено владельцем и записано в materials.py:
+    это факт, он бьет любое определение по названию. Дальше по общему
+    правилу: вся наша арматура бронзовая или латунная, включая все
+    клинкеты. Стальными идут только паровой и редукционные клапаны,
+    плюс то, где сталь прямо написана в названии.
     """
     n = r["Наименование"]
+    confirmed = materials.known(n, r.get("Чертеж"))
+    if confirmed:
+        return confirmed
     if is_titanium(r):
         return "титан"
     if NERZH.search(n):

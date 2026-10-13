@@ -35,6 +35,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from build_catalog_xlsx import group_of as catalog_group  # noqa: E402
 from build_container_plan import unit_volume  # noqa: E402
 from build_marine_registry import SOURCES, parse  # noqa: E402
+import materials  # noqa: E402
 from build_shipment_spb import (  # noqa: E402
     FLOOR, PACKING, TIERS, is_bronze, is_titanium, item_kind, pack_type,
     tier,
@@ -93,8 +94,13 @@ BLOCK_B = "Б. Добор со склада"
 
 
 def asrow(r):
-    """Строка в том виде, в каком ее ждут функции разбора."""
+    """Строка в том виде, в каком ее ждут функции разбора.
+
+    Чертеж обязателен: по нему material() находит подтвержденный
+    материал. Без него стальная позиция уйдет в расчет как бронза, а
+    это 500 руб за килограмм против 9."""
     return {"Наименование": r["Наименование"],
+            "Чертеж": r.get("Чертеж") or "",
             "Группа в файле": "",
             "Группа продажи": "Арматура",
             "вес_ед": r.get("вес_ед", 0)}
@@ -209,6 +215,7 @@ def collect(limit_kg=LIMIT_KG, limit_m3=LIMIT_M3):
         free[k] -= qty
         w = weight_of(r["Наименование"], real)
         price = r["Цена за ед., руб"] or 0
+        mat = materials.known(r["Наименование"], r["Чертеж"])
         candidates.append({
             "Блок": BLOCK_B,
             "Наименование": r["Наименование"],
@@ -223,9 +230,12 @@ def collect(limit_kg=LIMIT_KG, limit_m3=LIMIT_M3):
             "Цена": price or "",
             "Ориентир": "",
             "Сумма": qty * price,
-            "бронза": is_bronze(r),
+            # подтвержденный материал бьет определение по названию:
+            # стальное не должно уехать под видом бронзы
+            "бронза": is_bronze(r) and mat != "сталь",
             "титан": is_titanium(r),
-            "Выделено": ("бронза/латунь" if is_bronze(r)
+            "Выделено": (mat if mat
+                         else "бронза/латунь" if is_bronze(r)
                          else "титан" if is_titanium(r) else ""),
             "Откуда": r["Локация"],
         })
