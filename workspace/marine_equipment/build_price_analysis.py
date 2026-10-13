@@ -159,15 +159,23 @@ def our_prices():
     deal_draw, deal_name = {}, {}
     for r in read_spb():
         # цена по договору записана текстом: число, диапазон или
-        # «по согласованию». Берем середину диапазона
-        lo, hi, _ = our_price(r["Цена по договору"])
-        price = (lo + hi) / 2 if lo and hi else 0
+        # «по согласованию». По диапазону берем верхнюю границу: это
+        # наша цена продажи, и по договору конкретную цену внутри
+        # диапазона все равно согласовывать отдельно.
+        #
+        # Исключение — запись, где верх больше низа втрое и выше: это
+        # не диапазон, а опечатка. «Фильтр забортной воды Ду100, 55-650»
+        # дал бы 650 000 при том, что Ду200 стоит 170 000. По таким
+        # берем нижнюю границу и помечаем строку
+        lo, hi, flag = our_price(r["Цена по договору"])
+        price = (lo if flag else hi) or 0
         if not price:
             continue
+        mark = " — запись сомнительная, взята нижняя граница" if flag else ""
         key = norm_draw(r["Обозначение"])
         if key:
-            deal_draw.setdefault(key, price)
-        deal_name.setdefault(clean(r["Наименование"]), price)
+            deal_draw.setdefault(key, (price, mark))
+        deal_name.setdefault(clean(r["Наименование"]), (price, mark))
     return sale_draw, sale_name, deal_draw, deal_name
 
 
@@ -217,8 +225,10 @@ def enrich(items, by_draw, by_type):
         # наша продажная цена — та, что согласована в договоре.
         # Цена из складского учета остается рядом как справка: она не
         # проверена сделками и местами расходится между локациями
-        it["Наша цена"], it["Наша откуда"] = look(
-            deal_draw, deal_name, it["Чертеж"], it["Наименование"])
+        found, how = look(deal_draw, deal_name, it["Чертеж"],
+                          it["Наименование"])
+        it["Наша цена"] = found[0] if found else None
+        it["Наша откуда"] = (how + found[1]) if found else ""
         it["Учет"], it["Учет откуда"] = look(
             sale_draw, sale_name, it["Чертеж"], it["Наименование"])
         p, how = pick(by_draw, by_type, it["Чертеж"], it["Группа"],
