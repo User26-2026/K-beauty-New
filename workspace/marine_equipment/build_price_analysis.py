@@ -49,6 +49,7 @@ from build_spb_list_xlsx import read as read_spb  # noqa: E402
 from build_shipment_spb import item_kind, material  # noqa: E402
 from build_spb_list_xlsx import GROUPS, group_of  # noqa: E402
 from build_weight_xlsx import du as du_of  # noqa: E402
+import scrap_prices as scrap  # noqa: E402
 
 FONT = "Arial"
 HEAD_FILL = PatternFill("solid", fgColor="1F3864")
@@ -207,6 +208,7 @@ def widths(ws, values):
 def enrich(items, by_draw, by_type):
     sale_draw, sale_name, deal_draw, deal_name = our_prices()
     for it in items:
+        it["Лом"] = scrap.value(it["Материал"], it["Вес"])
         it["Наша цена"], it["Наша откуда"] = look(
             sale_draw, sale_name, it["Чертеж"], it["Наименование"])
         it["По договору"], _ = look(
@@ -371,6 +373,58 @@ def sheet_summary(wb, items):
         row += 1
 
     row += 1
+    ws.cell(row=row, column=1,
+            value="Нижняя граница: цены металлоприемки").font = SUB
+    row += 1
+    for label, value_, note in [
+        ("Бронза, руб за кг", scrap.SCRAP["бронза"], ""),
+        ("Латунь, руб за кг", scrap.SCRAP["латунь"],
+         "по ней и считаем: в учете материал почти нигде не разделен, "
+         "латунь дешевле, оценка осторожнее"),
+        ("Медь, руб за кг", scrap.SCRAP["медь"], ""),
+        ("Алюминий, руб за кг", scrap.SCRAP["алюминий"], ""),
+        ("Нержавейка, руб за кг", scrap.SCRAP["нержавейка"], ""),
+        ("Чугун и черный металл, руб за кг", scrap.SCRAP["сталь"], ""),
+        ("Титан", "ставки нет", "запросить отдельно"),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BASE
+        cell = ws.cell(row=row, column=2, value=value_)
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.fill = INPUT_FILL
+        if isinstance(value_, (int, float)):
+            cell.number_format = "#,##0"
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
+    lom_items = [it for it in items if it["Лом"]]
+    lom_sum = sum(it["Лом"] * (it["Штук"] or 1) for it in lom_items)
+    ratios = sorted(it["Лучшая"] / it["Лом"] for it in items
+                    if it["Лучшая"] and it["Лом"])
+    below = sum(1 for r in ratios if r < 1)
+    for label, value_, note in [
+        ("Весь этот перечень в ломе, руб", round(lom_sum),
+         "нижняя граница: ниже этого продавать незачем"),
+        ("Позиций, где предложение НИЖЕ лома", below,
+         "такие проще сдать, чем продавать"),
+        ("Минимальный запас над ломом",
+         round(ratios[0], 1) if ratios else None,
+         "во столько раз лучшее предложение выше лома"),
+        ("Медианный запас над ломом",
+         round(ratios[len(ratios) // 2], 1) if ratios else None, ""),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = BASE
+        cell = ws.cell(row=row, column=2, value=value_)
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.number_format = "#,##0.0" if isinstance(value_, float) else "#,##0"
+        if label.startswith("Позиций") and value_:
+            cell.fill = WARN
+        ws.cell(row=row, column=3, value=note).font = NOTE
+        row += 1
+
+    row += 1
     ws.cell(row=row, column=1, value="Что из этого следует").font = SUB
     row += 1
     tit = stat["Титов"]
@@ -400,6 +454,11 @@ def sheet_summary(wb, items):
         "шапке не указаны вообще, а это 80 цен.",
         "Ленпромарматура и Бурыкин давали цены в феврале 2026. Прошло "
         "восемь месяцев, их надо обновлять.",
+        f"Лом держит нижнюю границу. Весь перечень этого файла в ломе — "
+        f"{lom_sum / 1e6:.1f} млн руб, и ни одно предложение ниже лома не "
+        f"опускается: минимум {ratios[0]:.1f} раза выше, медиана "
+        f"{ratios[len(ratios) // 2]:.1f}. Значит торговаться есть куда, но "
+        "и пол понятен.",
     ]:
         cell = ws.cell(row=row, column=1, value="— " + text)
         cell.font = BASE
@@ -423,10 +482,12 @@ def sheet_items(wb, items):
 
     names = [who for _, who, _, _ in BUYERS]
     cols = (["№", "Наименование", "Чертеж", "Ду", "Состояние", "Вес, кг",
-             "Штук", "НАША ЦЕНА продажи", "Наша цена по договору"] + names
+             "Штук", "НАША ЦЕНА продажи", "Наша цена по договору",
+             "Лом, руб"] + names
             + ["Максимум", "Кто дал максимум", "Минимум", "Разброс",
                "Конкурент, руб", "Откуда цена конкурента",
-               "Руб за кг по максимуму", "Максимум к нашей цене"])
+               "Руб за кг по максимуму", "Максимум к нашей цене",
+               "Максимум к лому"])
     start = 4
     for i, h in enumerate(cols, start=1):
         ws.cell(row=start, column=i, value=h)
@@ -473,7 +534,8 @@ def sheet_items(wb, items):
             base = [n, it["Наименование"], it["Чертеж"], it["Ду"],
                     it["Состояние"], round(it["Вес"], 1), it["Штук"],
                     round(it["Наша цена"]) if it["Наша цена"] else None,
-                    round(it["По договору"]) if it["По договору"] else None]
+                    round(it["По договору"]) if it["По договору"] else None,
+                    round(it["Лом"]) if it["Лом"] else None]
             prices = [round(nets[w]) if w in nets else None for w in names]
             tail = [round(it["Лучшая"]) if it["Лучшая"] else None,
                     it["Лучший"], round(lo) if lo else None,
@@ -484,7 +546,9 @@ def sheet_items(wb, items):
                     round(it["Лучшая"] / it["Вес"])
                     if it["Лучшая"] and it["Вес"] else None,
                     (it["Лучшая"] / it["Наша цена"])
-                    if it["Лучшая"] and it["Наша цена"] else None]
+                    if it["Лучшая"] and it["Наша цена"] else None,
+                    (it["Лучшая"] / it["Лом"])
+                    if it["Лучшая"] and it["Лом"] else None]
             for i, v in enumerate(base + prices + tail, start=1):
                 cell = ws.cell(row=row, column=i, value=v)
                 cell.font = BASE
@@ -496,22 +560,22 @@ def sheet_items(wb, items):
             ws.cell(row=row, column=8).fill = MARK
             if it["Лучший"] in names:
                 ws.cell(row=row,
-                        column=10 + names.index(it["Лучший"])).fill = BEST
-            gap = 9 + len(names) + 4
+                        column=11 + names.index(it["Лучший"])).fill = BEST
+            gap = 10 + len(names) + 4
             ws.cell(row=row, column=gap).number_format = "#,##0.00"
-            last_col = 9 + len(names) + 7
-            cell = ws.cell(row=row, column=last_col)
-            cell.number_format = "#,##0.00"
-            if isinstance(cell.value, (int, float)):
-                cell.fill = BEST if cell.value >= 1 else WARN
+            for off, limit in ((7, 1), (8, 1)):
+                cell = ws.cell(row=row, column=10 + len(names) + off)
+                cell.number_format = "#,##0.00"
+                if isinstance(cell.value, (int, float)):
+                    cell.fill = BEST if cell.value >= limit else WARN
             if not nets:
                 ws.cell(row=row, column=2).fill = WARN
 
     last = row
     ws.auto_filter.ref = f"A{start}:{get_column_letter(len(cols))}{last}"
     ws.freeze_panes = f"C{start + 1}"
-    widths(ws, [5, 50, 18, 7, 13, 10, 8, 18, 20] + [15] * len(names)
-           + [13, 20, 13, 11, 15, 24, 18, 20])
+    widths(ws, [5, 50, 18, 7, 13, 10, 8, 18, 20, 12] + [15] * len(names)
+           + [13, 20, 13, 11, 15, 24, 18, 20, 16])
     return ws
 
 
@@ -601,7 +665,7 @@ def sheet_groups(wb, items):
     ws["A2"].font = NOTE
 
     row = 4
-    cols = (["Группа", "Позиций", "С ценой", "Вес, кг",
+    cols = (["Группа", "Позиций", "С ценой", "Вес, кг", "Лом, руб за кг",
              "НАША ЦЕНА, руб за кг"] + names
             + ["Конкурент, руб за кг"])
     for i, h in enumerate(cols, start=1):
@@ -625,9 +689,19 @@ def sheet_groups(wb, items):
             cell.font = BASE
             cell.border = BORDER
             cell.number_format = "#,##0"
+        lom = sorted(it["Лом"] / it["Вес"] for it in rows
+                     if it["Лом"] and it["Вес"])
+        cell = ws.cell(row=row, column=5)
+        cell.border = BORDER
+        cell.font = BASE
+        if lom:
+            cell.value = round(lom[len(lom) // 2])
+            cell.number_format = "#,##0"
+        else:
+            cell.value = "—"
         ours = sorted(it["Наша цена"] / it["Вес"] for it in rows
                       if it["Наша цена"] and it["Вес"])
-        cell = ws.cell(row=row, column=5)
+        cell = ws.cell(row=row, column=6)
         cell.border = BORDER
         cell.font = BOLD
         cell.fill = MARK
@@ -639,7 +713,7 @@ def sheet_groups(wb, items):
         for j, who in enumerate(names):
             vals = sorted(it["На руки"][who] / it["Вес"] for it in rows
                           if who in it["На руки"] and it["Вес"])
-            cell = ws.cell(row=row, column=6 + j)
+            cell = ws.cell(row=row, column=7 + j)
             cell.font = BASE
             cell.border = BORDER
             if vals:
@@ -651,7 +725,7 @@ def sheet_groups(wb, items):
                 cell.font = NOTE
         comp = sorted(it["Конкурент"] / it["Вес"] for it in rows
                       if it["Конкурент"] and it["Вес"])
-        cell = ws.cell(row=row, column=6 + len(names))
+        cell = ws.cell(row=row, column=7 + len(names))
         cell.border = BORDER
         cell.font = BOLD
         if comp:
@@ -683,7 +757,7 @@ def sheet_groups(wb, items):
         ws.row_dimensions[row].height = 30
         row += 1
 
-    widths(ws, [34, 10, 10, 12, 20] + [22] * len(names) + [20])
+    widths(ws, [34, 10, 10, 12, 16, 20] + [22] * len(names) + [20])
     return ws
 
 

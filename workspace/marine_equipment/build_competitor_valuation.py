@@ -45,6 +45,7 @@ from build_marine_registry import SOURCES, parse  # noqa: E402
 from build_shipment_spb import FILTERS, material  # noqa: E402
 from build_spb_list_xlsx import GROUPS, group_of, read as read_spb  # noqa: E402
 from build_weight_xlsx import du  # noqa: E402
+import scrap_prices as scrap  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
 
@@ -243,6 +244,18 @@ def sheet_summary(wb, items, ship, per_kg, all_kg, comp):
          "больше единицы — конкурент дороже нас"),
         ("Средняя цена килограмма по конкуренту, руб", round(all_kg),
          "по всей сопоставленной арматуре"),
+        ("ВЕСЬ СКЛАД В ЛОМЕ, руб",
+         round(sum(scrap.value(r["Материал"], r["вес"]) or 0 for r in items)),
+         f"латунь {scrap.SCRAP['латунь']}, бронза "
+         f"{scrap.SCRAP['бронза']}, сталь {scrap.SCRAP['сталь']} руб за кг. "
+         "Считаем по латуни — осторожнее"),
+        ("Он же по бронзе 600 руб за кг",
+         round(sum(r["вес"] for r in items) * scrap.SCRAP["бронза"]),
+         "верхняя граница лома"),
+        ("Во сколько раз рынок дороже лома",
+         round(total / sum(scrap.value(r["Материал"], r["вес"]) or 0
+                           for r in items), 1),
+         "запас между ценой приемки и ценой рынка"),
         ("Позиций без согласованной цены у нас",
          sum(1 for r in items if not r["Наша цена"]),
          "вес у них есть, а рублей в учете нет — наша сумма занижена "
