@@ -38,6 +38,8 @@ import upd_shipments  # noqa: E402
 from build_container_spb import plural  # noqa: E402
 from build_logistics_compare import rows_all  # noqa: E402
 from build_picking_list import TAIL, group_order, ru_of  # noqa: E402
+from build_container_spb import asrow  # noqa: E402
+from build_shipment_spb import material  # noqa: E402
 from build_spb_list_xlsx import group_of, read as read_spb  # noqa: E402
 from build_weight_xlsx import du as du_of  # noqa: E402
 from docx import Document  # noqa: E402
@@ -52,6 +54,11 @@ OUT = ROOT / "outputs" / "marine_equipment"
 CONTRACT = "Договору купли-продажи товара с отсрочкой платежа и " \
            "последующей реализацией Покупателем от «18» сентября 2026 г."
 AGREE = "по согласованию"
+
+# материалы, к которым применяется ставка за килограмм. Сталь, титан,
+# нержавейка и алюминий по ней не считаются: ставка назначена на
+# бронзу, а они стоят других денег
+BRONZE = ("бронза/латунь", "бронза", "латунь")
 
 
 def norm_draw(v):
@@ -141,7 +148,14 @@ def annex4():
     rd, rn = price_index("Ориентир реализации")
     rows = []
     for r in rows_all():
-        price, how = price_of(r, by_draw, by_name)
+        mat = material(asrow(r))
+        if mat in BRONZE and r["вес_ед"]:
+            # решение собственника: бронза и латунь считаются от веса
+            # по ставке за килограмм, а не по старым ценам договора
+            price = rub(round(r["вес_ед"] * upd_shipments.BRONZE_RATE))
+            how = f"ставка {upd_shipments.BRONZE_RATE:.2f} руб за кг"
+        else:
+            price, how = price_of(r, by_draw, by_name)
         rows.append({
             "name": r["Наименование"],
             "draw": r.get("Чертеж") or "",
@@ -324,6 +338,18 @@ def total_resale(s):
     return rub(lo) if lo == hi else f"{rub(lo)} - {rub(hi)}"
 
 
+def annex_sum(rows):
+    """Сумма по приложению. Позиции без цены в сумму не входят."""
+    lo = hi = 0
+    for r in rows:
+        b = upd_shipments.bounds(r["price"])
+        if not b:
+            continue
+        lo += min(b) * r["qty"]
+        hi += max(b) * r["qty"]
+    return upd_shipments.money(lo, hi)
+
+
 def header(doc, number, title, first=False):
     if not first:
         doc.add_page_break()
@@ -352,7 +378,7 @@ def sheet_shipped(doc, s, first=False):
     for i, it in enumerate(s["items"], start=1):
         row(t, [i, it["name"], it["draw"] or "—", it["qty"],
                 f"{it['kg']:.1f}".replace(".", ","),
-                rub(upd_shipments.price(it)),
+                upd_shipments.price(it),
                 rub(it["repair"]) if it.get("repair") else "",
                 it.get("resale") or AGREE], W, center=CENTER)
     cells = t.add_row().cells
@@ -363,7 +389,7 @@ def sheet_shipped(doc, s, first=False):
     qty = sum(it["qty"] for it in s["items"])
     kg = sum(it["qty"] * it["kg"] for it in s["items"])
     repair = sum(it["qty"] * it.get("repair", 0) for it in s["items"])
-    for i, v in [(3, qty), (4, rub(kg)), (5, rub(s["total"])),
+    for i, v in [(3, qty), (4, rub(kg)), (5, s["total"]),
                  (6, rub(repair) if repair else ""),
                  (7, total_resale(s))]:
         cells[i].width = Cm(W[i])
@@ -381,6 +407,10 @@ def sheet_shipped(doc, s, first=False):
               "стоят суммы по всей партии, а не цены единицы. Где цена "
               "реализации указана диапазоном, сумма тоже диапазон. "
               "Стоимость ремонта в цену по Договору не входит.", size=9)
+    notes = [f"{it['name'].split(',')[0]} — {it['src']}"
+             for it in s["items"] if it.get("src")]
+    if notes:
+        para(doc, "Источник цены: " + "; ".join(notes) + ".", size=9)
     para(doc, "Стоимость реализации приведена по ориентиру из "
               "приложения к Договору. По пункту 3.2 конкретная цена "
               "реализации конечному покупателю согласуется Сторонами "
@@ -394,11 +424,11 @@ def sheet_shipped(doc, s, first=False):
                         .replace(".", ",")
                       + " руб за кг, "
                       + f"{it['kg']:.1f}".replace(".", ",") + " кг, "
-                      + rub(upd_shipments.price(it)) + " руб за единицу"
+                      + upd_shipments.price(it) + " руб за единицу"
                       for it in rated)
                   + ". Если вес уточнится при замере, цена "
                     "пересчитывается по той же ставке.", size=9)
-    para(doc, f"Общая стоимость партии {rub(s['total'])} руб. Оплата "
+    para(doc, f"Общая стоимость партии {s['total']} руб. Оплата "
               f"производится на условиях отсрочки платежа по разделу 4 "
               f"Договора: не позднее 5 рабочих дней с даты получения "
               f"оплаты от конечного покупателя.", size=9)
@@ -419,6 +449,16 @@ def sheet_annex4(doc, data):
               f"г. Санкт-Петербург за счет Продавца (пункт 2.1 "
               f"Договора). Всего {a['positions']} позиций, "
               f"{rub(a['qty'])} шт, {a['kg'] / 1000:.2f} т.", size=9)
+    rate = f"{upd_shipments.BRONZE_RATE:,.2f}".replace(",", " ") \
+        .replace(".", ",")
+    tons = f"{a['by_rate_kg'] / 1000:.2f}".replace(".", ",")
+    para(doc, f"Цена по Договору по бронзовым и латунным позициям "
+              f"определена от веса: {rate} руб за килограмм. Так "
+              f"посчитано {a['by_rate']} "
+              f"{plural(a['by_rate'], 'позиция', 'позиции', 'позиций')} "
+              f"на {tons} т, всего на {a['by_rate_sum']} руб. Если вес "
+              f"уточнится при замере, цена пересчитывается по той же "
+              f"ставке.", size=9)
     para(doc, f"Цена по Договору определена по {a['agreed']} позициям. "
               f"По {a['open']} позициям цена не согласована и указана "
               f"«{AGREE}»: по пункту 3.5 Договора до согласования цены "
@@ -442,7 +482,8 @@ def sheet_annex4(doc, data):
                     f"{it['unit_kg']:.1f}".replace(".", ","),
                     it["price"], "", it["resale"]], W, center=CENTER)
     span(t, f"ИТОГО {a['positions']} позиций, {rub(a['qty'])} шт, "
-            f"{rub(a['kg'])} кг", W, color="BFBFBF")
+            f"{rub(a['kg'])} кг, по Договору {a['sum']} руб", W,
+         color="BFBFBF")
 
     para(doc, before=6)
     para(doc, "Столбец «Стоимость ремонта» заполняется по факту "
@@ -482,6 +523,11 @@ def main():
         "agreed": len(agreed),
         "open": len(open_price),
         "open_kg": sum(r["kg"] for r in open_price),
+        "sum": annex_sum(rows),
+        "by_rate_sum": annex_sum([r for r in rows
+                                  if "ставка" in r["how"]]),
+        "by_rate": len([r for r in rows if "ставка" in r["how"]]),
+        "by_rate_kg": sum(r["kg"] for r in rows if "ставка" in r["how"]),
         "ranges": len(ranges),
         "ranges_kg": sum(r["kg"] for r in ranges),
         "firm": len(firm),
@@ -504,10 +550,13 @@ def main():
               f"от {s['upd_date']}, {len(s['items'])} "
               f"{plural(len(s['items']), 'позиция', 'позиции', 'позиций')}, "
               f"{sum(i['qty'] for i in s['items'])} шт, "
-              f"{rub(upd_shipments.total(s))} руб")
-    print(f"Отгружено всего на "
-          f"{rub(sum(upd_shipments.total(s) for s in upd_shipments.SHIPMENTS))}"
-          f" руб")
+              f"{upd_shipments.total(s)} руб")
+    lo = hi = 0
+    for sh in upd_shipments.SHIPMENTS:
+        b = upd_shipments.bounds(upd_shipments.total(sh))
+        lo += min(b)
+        hi += max(b)
+    print(f"Отгружено всего на {upd_shipments.money(lo, hi)} руб")
     a = data["annex4"]
     print(f"\nПриложение № 4: {a['positions']} позиций, {rub(a['qty'])} шт, "
           f"{a['kg'] / 1000:.2f} т")
