@@ -61,8 +61,15 @@ AGREE = "по согласованию"
 BRONZE = ("бронза/латунь", "бронза", "латунь")
 
 
+# «без чертежа» и подобное — это пометка, что номера нет, а не номер.
+# Как ключ она склеивает разные позиции: по ней клапан Ду20 получал
+# цену от совсем другой строки договора.
+NO_DRAW = re.compile(r"безчертежа|нетчертежа|бечертежа|^-+$")
+
+
 def norm_draw(v):
-    return re.sub(r"[^0-9a-zа-я.\-]", "", str(v or "").lower())
+    s = re.sub(r"[^0-9a-zа-я.\-]", "", str(v or "").lower())
+    return "" if NO_DRAW.search(s) else s
 
 
 def clean(name):
@@ -82,6 +89,11 @@ def price_index(field="Цена по договору"):
         p = (r.get(field) or "").strip()
         if not p:
             continue
+        fixed = price_fixes.fix(r["Наименование"])
+        if fixed and field == "Цена по договору" \
+                and re.search(r"\d+\s*-\s*\d{3,}", p):
+            # подтвержденная опечатка: «55-650» это 55-65 тысяч
+            p = f"55 000 - {fixed:,.0f}".replace(",", " ")
         d = norm_draw(r["Обозначение"])
         if d:
             by_draw.setdefault(d, p)
@@ -167,24 +179,32 @@ def annex4():
             "price": price,
             "resale": resale_of(r, rd, rn),
             "how": how,
+            "material": mat,
             "group": group_of(r["Наименование"]),
         })
-    by_group = defaultdict(list)
-    for r in rows:
-        by_group[r["group"]].append(r)
-    # group_order ждет строки с ключами «Ду» и «вес» — отдаем их в
-    # его виде, чтобы порядок групп совпадал с бланком для склада
-    shaped = {g: [{"Ду": i["du"], "вес": i["kg"]} for i in items]
-              for g, items in by_group.items()}
+    # Сначала вся бронза и латунь, потом прочий материал — сталь,
+    # титан, нержавейка, алюминий. Ставка за килограмм назначена на
+    # бронзу, и позиции, которые по ней не считаются, не должны
+    # мешаться внутри бронзовых групп: их цена согласуется отдельно.
     blocks = []
-    for g in group_order(shaped):
-        items = sorted(by_group[g], key=lambda x: (-x["du"], x["name"]))
-        blocks.append({
-            "group": g,
-            "qty": sum(i["qty"] for i in items),
-            "kg": sum(i["kg"] for i in items),
-            "items": items,
-        })
+    for bronze in (True, False):
+        part = [r for r in rows if (r["material"] in BRONZE) == bronze]
+        if not part:
+            continue
+        by_group = defaultdict(list)
+        for r in part:
+            by_group[r["group"]].append(r)
+        shaped = {g: [{"Ду": i["du"], "вес": i["kg"]} for i in items]
+                  for g, items in by_group.items()}
+        for g in group_order(shaped):
+            items = sorted(by_group[g], key=lambda x: (-x["du"], x["name"]))
+            blocks.append({
+                "group": g if bronze else f"{g} — не бронза",
+                "bronze": bronze,
+                "qty": sum(i["qty"] for i in items),
+                "kg": sum(i["kg"] for i in items),
+                "items": items,
+            })
     return rows, blocks
 
 
