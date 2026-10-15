@@ -44,7 +44,9 @@ from build_spb_list_xlsx import (  # noqa: E402
     GROUPS, group_of, read as read_spb,
 )
 from shipments_done import shipped_off  # noqa: E402
-from build_weight_xlsx import du, unit_weight as ref_weight  # noqa: E402
+from build_weight_xlsx import (  # noqa: E402
+    WEIGHTS, du, kind, unit_weight as ref_weight,
+)
 import gate_geometry as gg  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
@@ -122,16 +124,24 @@ def real_weights(spb):
 
 
 def weight_of(name, real):
-    """Масса единицы: замер, пересчет от ближайшего диаметра или
-    справочник."""
+    """Масса единицы: замер, паспорт завода, пересчет от соседа.
+
+    Паспорт идет РАНЬШЕ пересчета. Пересчет «масса растет как куб»
+    занижал мелочь вдвое: от Ду200 он давал 11,7 кг на задвижку Ду80
+    при паспортных 24. На складе 44 такие задвижки, это полтонны на
+    одной позиции.
+    """
     k = key(name)
     if k in real:
         return real[k]
+    table = WEIGHTS.get(kind(name))
+    if table and k[1] and k[1] in table:
+        return table[k[1]]
     same = {kk[1]: v for kk, v in real.items() if kk[0] == k[0] and kk[1]}
     if same and k[1]:
+        # паспорта на этот диаметр нет — тянем от ближайшего соседа
+        # по той же форме, показатель 2,2 ближе к замерам, чем куб
         near = min(same, key=lambda x: abs(x - k[1]))
-        # масса арматуры растет примерно как куб размера, но корпус
-        # и фланцы тянут медленнее — показатель 2,2 ближе к замерам
         return same[near] * (k[1] / near) ** 2.2
     return ref_weight(name)
 

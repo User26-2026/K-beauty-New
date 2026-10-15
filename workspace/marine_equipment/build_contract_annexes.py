@@ -306,6 +306,24 @@ def rub(n):
     return f"{n:,.0f}".replace(",", " ")
 
 
+def bounds(text):
+    """Границы цены: одно число или диапазон. Пустой список — нет цены."""
+    return [int(n.replace(" ", "").replace("\u00a0", ""))
+            for n in re.findall(r"\d+(?:[  ]\d{3})*", text or "")]
+
+
+def total_resale(s):
+    """Общая сумма по реализации. Диапазон остается диапазоном."""
+    lo = hi = 0
+    for it in s["items"]:
+        b = bounds(it.get("resale"))
+        if not b:
+            return AGREE
+        lo += min(b) * it["qty"]
+        hi += max(b) * it["qty"]
+    return rub(lo) if lo == hi else f"{rub(lo)} - {rub(hi)}"
+
+
 def header(doc, number, title, first=False):
     if not first:
         doc.add_page_break()
@@ -326,16 +344,18 @@ def sheet_shipped(doc, s, first=False):
               f"№ {s['upd']} от {s['upd_date']}. Дата отгрузки "
               f"{s['shipped']}. Место получения: {s['city']}. "
               f"Получатель: ООО «ПКФ «АРМА».", size=9)
-    para(doc, f"Перевозка: {s['carrier']}. {s['places']}. Объявленная "
-              f"ценность {rub(s['declared'])} руб. Отправка за счет "
-              f"Продавца (пункт 2.1 Договора).", size=9, after=8)
+    para(doc, f"Перевозка: {s['carrier']}. {s['places']} — это вес "
+              f"брутто, с упаковкой. Объявленная ценность "
+              f"{rub(s['declared'])} руб. Отправка за счет Продавца "
+              f"(пункт 2.1 Договора).", size=9, after=8)
 
     t = table(doc, HEAD, W)
     for i, it in enumerate(s["items"], start=1):
         row(t, [i, it["name"], it["draw"] or "—", it["qty"],
                 f"{it['kg']:.1f}".replace(".", ","),
-                rub(it["price"]), "", it.get("resale") or AGREE],
-            W, center=CENTER)
+                rub(it["price"]),
+                rub(it["repair"]) if it.get("repair") else "",
+                it.get("resale") or AGREE], W, center=CENTER)
     cells = t.add_row().cells
     merged = cells[0]
     for c in cells[1:3]:
@@ -343,8 +363,10 @@ def sheet_shipped(doc, s, first=False):
     fill(merged, "ИТОГО", bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT)
     qty = sum(it["qty"] for it in s["items"])
     kg = sum(it["qty"] * it["kg"] for it in s["items"])
+    repair = sum(it["qty"] * it.get("repair", 0) for it in s["items"])
     for i, v in [(3, qty), (4, rub(kg)), (5, rub(s["total"])),
-                 (6, ""), (7, "")]:
+                 (6, rub(repair) if repair else ""),
+                 (7, total_resale(s))]:
         cells[i].width = Cm(W[i])
         fill(cells[i], v, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
     for c in cells:
@@ -355,10 +377,11 @@ def sheet_shipped(doc, s, first=False):
         f"{it['name'].split(',')[0]} — {it['cond']}"
         + (f", {it['note']}" if it.get("note") else "")
         for it in s["items"]) + ".", size=9)
-    para(doc, "В колонке ИТОГО по столбцу «Стоимость за ед. по Договору» "
-              "стоит сумма по партии, а не цена единицы. Столбец "
-              "«Стоимость ремонта» заполняется по факту выполнения "
-              "ремонта и в цену по Договору не входит.", size=9)
+    para(doc, "В строке ИТОГО по столбцам «Стоимость за ед. по "
+              "Договору», «Стоимость ремонта» и «Стоимость реализации» "
+              "стоят суммы по всей партии, а не цены единицы. Где цена "
+              "реализации указана диапазоном, сумма тоже диапазон. "
+              "Стоимость ремонта в цену по Договору не входит.", size=9)
     para(doc, "Стоимость реализации приведена по ориентиру из "
               "приложения к Договору. По пункту 3.2 конкретная цена "
               "реализации конечному покупателю согласуется Сторонами "
