@@ -64,11 +64,15 @@ def clean(name):
     return re.sub(r"\s+", " ", s).strip()
 
 
-def price_index():
-    """Цены из действующих приложений 2 и 3: по чертежу и по названию."""
+def price_index(field="Цена по договору"):
+    """Цены из действующих приложений 2 и 3: по чертежу и по названию.
+
+    Тем же способом берется и «Ориентир реализации» — это отдельная
+    колонка приложения 2, по ней заполняется стоимость реализации.
+    """
     by_draw, by_name = {}, {}
     for r in read_spb():
-        p = (r["Цена по договору"] or "").strip()
+        p = (r.get(field) or "").strip()
         if not p:
             continue
         d = norm_draw(r["Обозначение"])
@@ -122,8 +126,19 @@ def price_of(r, by_draw, by_name):
     return out, (how + ", тысячи переведены в рубли" if changed else how)
 
 
+def resale_of(r, by_draw, by_name):
+    """Ориентир реализации за единицу из приложения 2, в рублях."""
+    p = by_draw.get(norm_draw(r["Чертеж"])) \
+        or by_name.get(clean(r["Наименование"]))
+    if not p:
+        return AGREE
+    out, _ = normalize_price(p)
+    return out or AGREE
+
+
 def annex4():
     by_draw, by_name = price_index()
+    rd, rn = price_index("Ориентир реализации")
     rows = []
     for r in rows_all():
         price, how = price_of(r, by_draw, by_name)
@@ -133,8 +148,10 @@ def annex4():
             "du": int(r.get("Ду") or du_of(r["Наименование"]) or 0),
             "ru": ru_of(r),
             "qty": int(r["Штук"]),
+            "unit_kg": r["вес_ед"],
             "kg": round(r["вес"]),
             "price": price,
+            "resale": resale_of(r, rd, rn),
             "how": how,
             "group": group_of(r["Наименование"]),
         })
@@ -160,6 +177,22 @@ def annex4():
 
 
 FONT = "Times New Roman"
+
+# Один набор колонок на все четыре приложения. Сумма ширин равна
+# ширине полосы набора: 21 см минус поля 2 x 1,5.
+COLS = [
+    ("№", 0.8),
+    ("Наименование", 5.2),
+    ("Чертеж", 2.6),
+    ("Кол-во, шт.", 1.3),
+    ("Вес за ед., кг", 1.5),
+    ("Стоимость за ед. по Договору, руб.", 2.4),
+    ("Стоимость ремонта, руб.", 1.9),
+    ("Стоимость реализации за ед., руб.", 2.3),
+]
+W = [w for _, w in COLS]
+HEAD = [h for h, _ in COLS]
+CENTER = (0, 3, 4, 5, 6, 7)
 
 
 def setup(doc):
@@ -297,33 +330,39 @@ def sheet_shipped(doc, s, first=False):
               f"ценность {rub(s['declared'])} руб. Отправка за счет "
               f"Продавца (пункт 2.1 Договора).", size=9, after=8)
 
-    # сумма ширин равна ширине полосы набора: 21 см минус поля 2 x 1,5
-    w = [0.9, 6.0, 3.0, 1.6, 1.5, 2.5, 2.5]
-    t = table(doc, ["№", "Наименование товара", "Обозначение",
-                    "Состояние", "Кол-во, шт.", "Цена по Договору, руб.",
-                    "Стоимость, руб."], w)
+    t = table(doc, HEAD, W)
     for i, it in enumerate(s["items"], start=1):
-        row(t, [i, it["name"], it["draw"] or "—", it.get("cond", ""),
-                it["qty"], rub(it["price"]),
-                rub(it["qty"] * it["price"])],
-            w, center=(0, 3, 4, 5, 6))
+        row(t, [i, it["name"], it["draw"] or "—", it["qty"],
+                f"{it['kg']:.1f}".replace(".", ","),
+                rub(it["price"]), "", it.get("resale") or AGREE],
+            W, center=CENTER)
     cells = t.add_row().cells
     merged = cells[0]
-    for c in cells[1:4]:
+    for c in cells[1:3]:
         merged = merged.merge(c)
     fill(merged, "ИТОГО", bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT)
-    for i, v in [(4, sum(it["qty"] for it in s["items"])), (5, ""),
-                 (6, rub(s["total"]))]:
-        cells[i].width = Cm(w[i])
+    qty = sum(it["qty"] for it in s["items"])
+    kg = sum(it["qty"] * it["kg"] for it in s["items"])
+    for i, v in [(3, qty), (4, rub(kg)), (5, rub(s["total"])),
+                 (6, ""), (7, "")]:
+        cells[i].width = Cm(W[i])
         fill(cells[i], v, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
     for c in cells:
         shade(c, "D9E2F3")
 
     para(doc, before=6)
-    notes = [it["note"] for it in s["items"] if it.get("note")]
-    if notes:
-        para(doc, "Состояние и особенности: " + "; ".join(notes) + ".",
-             size=9)
+    para(doc, "Состояние: " + "; ".join(
+        f"{it['name'].split(',')[0]} — {it['cond']}"
+        + (f", {it['note']}" if it.get("note") else "")
+        for it in s["items"]) + ".", size=9)
+    para(doc, "В колонке ИТОГО по столбцу «Стоимость за ед. по Договору» "
+              "стоит сумма по партии, а не цена единицы. Столбец "
+              "«Стоимость ремонта» заполняется по факту выполнения "
+              "ремонта и в цену по Договору не входит.", size=9)
+    para(doc, "Стоимость реализации приведена по ориентиру из "
+              "приложения к Договору. По пункту 3.2 конкретная цена "
+              "реализации конечному покупателю согласуется Сторонами "
+              "письменно до передачи товара.", size=9)
     para(doc, f"Общая стоимость партии {rub(s['total'])} руб. Оплата "
               f"производится на условиях отсрочки платежа по разделу 4 "
               f"Договора: не позднее 5 рабочих дней с даты получения "
@@ -356,23 +395,27 @@ def sheet_annex4(doc, data):
               f"до передачи соответствующей позиции Покупателю.", size=9,
          after=8)
 
-    # сумма ширин равна ширине полосы набора: 21 см минус поля 2 x 1,5
-    w = [0.9, 7.6, 3.3, 1.6, 4.6]
-    t = table(doc, ["№", "Наименование", "Обозначение", "Кол-во, шт.",
-                    "Цена по Договору, руб."], w)
+    t = table(doc, HEAD, W)
     n = 0
     for b in data["annex4"]["blocks"]:
         span(t, f"{b['group']} — {len(b['items'])} "
                 f"{plural(len(b['items']), 'позиция', 'позиции', 'позиций')}"
-                f", {rub(b['qty'])} шт, {rub(b['kg'])} кг", w)
+                f", {rub(b['qty'])} шт, {rub(b['kg'])} кг", W)
         for it in b["items"]:
             n += 1
             row(t, [n, it["name"], it["draw"] or "—", it["qty"],
-                    it["price"]], w, center=(0, 3))
+                    f"{it['unit_kg']:.1f}".replace(".", ","),
+                    it["price"], "", it["resale"]], W, center=CENTER)
     span(t, f"ИТОГО {a['positions']} позиций, {rub(a['qty'])} шт, "
-            f"{rub(a['kg'])} кг", w, color="BFBFBF")
+            f"{rub(a['kg'])} кг", W, color="BFBFBF")
 
     para(doc, before=6)
+    para(doc, "Столбец «Стоимость ремонта» заполняется по факту "
+              "выполнения ремонта и в цену по Договору не входит. "
+              "Стоимость реализации приведена по ориентиру из "
+              "приложения к Договору: по пункту 3.2 конкретная цена "
+              "реализации согласуется Сторонами письменно до передачи "
+              "товара конечному покупателю.", size=9)
     para(doc, "Цены, записанные в приложениях к Договору в тысячах "
               "(например «250-300»), приведены здесь к рублям. Граница "
               "меньше 1 000 означает тысячи рублей: самая дешевая "
