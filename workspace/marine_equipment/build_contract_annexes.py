@@ -340,9 +340,8 @@ def sheet_shipped(doc, s, first=False):
     header(doc, s["annex"], s["title"], first)
     para(doc, f"Продавец: {upd_shipments.SELLER}", size=9)
     para(doc, f"Покупатель: {upd_shipments.BUYER}", size=9, after=6)
-    para(doc, f"Товар передан по универсальному передаточному документу "
-              f"№ {s['upd']} от {s['upd_date']}. Дата отгрузки "
-              f"{s['shipped']}. Место получения: {s['city']}. "
+    para(doc, f"Товар передан Покупателю {s['shipped']}. "
+              f"Место получения: {s['city']}. "
               f"Получатель: ООО «ПКФ «АРМА».", size=9)
     para(doc, f"Перевозка: {s['carrier']}. {s['places']} — это вес "
               f"брутто, с упаковкой. Объявленная ценность "
@@ -353,7 +352,7 @@ def sheet_shipped(doc, s, first=False):
     for i, it in enumerate(s["items"], start=1):
         row(t, [i, it["name"], it["draw"] or "—", it["qty"],
                 f"{it['kg']:.1f}".replace(".", ","),
-                rub(it["price"]),
+                rub(upd_shipments.price(it)),
                 rub(it["repair"]) if it.get("repair") else "",
                 it.get("resale") or AGREE], W, center=CENTER)
     cells = t.add_row().cells
@@ -386,6 +385,19 @@ def sheet_shipped(doc, s, first=False):
               "приложения к Договору. По пункту 3.2 конкретная цена "
               "реализации конечному покупателю согласуется Сторонами "
               "письменно до передачи товара.", size=9)
+    rated = [it for it in s["items"] if it.get("rate")]
+    if rated:
+        para(doc, "Цена по Договору определена от веса: "
+                  + "; ".join(
+                      it["name"].split(",")[0] + " — "
+                      + f"{it['rate']:,.2f}".replace(",", " ")
+                        .replace(".", ",")
+                      + " руб за кг, "
+                      + f"{it['kg']:.1f}".replace(".", ",") + " кг, "
+                      + rub(upd_shipments.price(it)) + " руб за единицу"
+                      for it in rated)
+                  + ". Если вес уточнится при замере, цена "
+                    "пересчитывается по той же ставке.", size=9)
     para(doc, f"Общая стоимость партии {rub(s['total'])} руб. Оплата "
               f"производится на условиях отсрочки платежа по разделу 4 "
               f"Договора: не позднее 5 рабочих дней с даты получения "
