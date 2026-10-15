@@ -34,6 +34,7 @@ from collections import defaultdict
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import price_fixes  # noqa: E402
+import repair_prices  # noqa: E402
 import upd_shipments  # noqa: E402
 from build_container_spb import plural  # noqa: E402
 from build_logistics_compare import rows_all  # noqa: E402
@@ -41,7 +42,7 @@ from build_picking_list import TAIL, group_order, ru_of  # noqa: E402
 from build_container_spb import asrow  # noqa: E402
 from build_shipment_spb import material  # noqa: E402
 from build_spb_list_xlsx import group_of, read as read_spb  # noqa: E402
-from build_weight_xlsx import du as du_of  # noqa: E402
+from build_weight_xlsx import du as du_of, kind as kind_of  # noqa: E402
 from docx import Document  # noqa: E402
 from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: E402
 from docx.oxml import OxmlElement  # noqa: E402
@@ -177,6 +178,9 @@ def annex4():
             "unit_kg": r["вес_ед"],
             "kg": round(r["вес"]),
             "price": price,
+            "repair": repair_prices.price(kind_of(r["Наименование"]),
+                                          int(r.get("Ду") or 0),
+                                          r.get("Состояние")),
             "resale": resale_of(r, rd, rn),
             "how": how,
             "material": mat,
@@ -500,15 +504,24 @@ def sheet_annex4(doc, data):
             n += 1
             row(t, [n, it["name"], it["draw"] or "—", it["qty"],
                     f"{it['unit_kg']:.1f}".replace(".", ","),
-                    it["price"], "", it["resale"]], W, center=CENTER)
+                    it["price"],
+                    rub(it["repair"]) if it["repair"] else "",
+                    it["resale"]], W, center=CENTER)
     span(t, f"ИТОГО {a['positions']} позиций, {rub(a['qty'])} шт, "
-            f"{rub(a['kg'])} кг, по Договору {a['sum']} руб", W,
-         color="BFBFBF")
+            f"{rub(a['kg'])} кг, по Договору {a['sum']} руб, "
+            f"ремонт {rub(a['repair_sum'])} руб", W, color="BFBFBF")
 
     para(doc, before=6)
-    para(doc, "Столбец «Стоимость ремонта» заполняется по факту "
-              "выполнения ремонта и в цену по Договору не входит. "
-              "Стоимость реализации приведена по ориентиру из "
+    para(doc, f"Стоимость ремонта проставлена по прайсу мастерской "
+              f"для {a['repair_n']} "
+              f"{plural(a['repair_n'], 'позиции', 'позиций', 'позиций')} "
+              f"на {rub(a['repair_sum'])} руб. Это ориентир, а не счет: "
+              f"фактическая стоимость ставится по факту выполненного "
+              f"ремонта. В цену по Договору ремонт не входит. Новые "
+              f"позиции и те, которых нет в прайсе — фильтры, коробки, "
+              f"краны, захлопки, кингстоны и вентиляционные головки — "
+              f"оставлены пустыми.", size=9)
+    para(doc, "Стоимость реализации приведена по ориентиру из "
               "приложения к Договору: по пункту 3.2 конкретная цена "
               "реализации согласуется Сторонами письменно до передачи "
               "товара конечному покупателю.", size=9)
@@ -544,6 +557,8 @@ def main():
         "open": len(open_price),
         "open_kg": sum(r["kg"] for r in open_price),
         "sum": annex_sum(rows),
+        "repair_sum": sum((r["repair"] or 0) * r["qty"] for r in rows),
+        "repair_n": len([r for r in rows if r["repair"]]),
         "by_rate_sum": annex_sum([r for r in rows
                                   if "ставка" in r["how"]]),
         "by_rate": len([r for r in rows if "ставка" in r["how"]]),
