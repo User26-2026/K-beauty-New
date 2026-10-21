@@ -156,7 +156,19 @@ def price_of(r, by_draw, by_name):
     if AGREE in p.lower():
         return AGREE, "цены в договоре нет"
     out, changed = normalize_price(p)
-    return out, (how + ", тысячи переведены в рубли" if changed else how)
+    ranged = len(upd_shipments.bounds(out)) > 1
+    note = how
+    if changed:
+        note += ", тысячи переведены в рубли"
+    if ranged:
+        note += ", двойная цена по верхней границе"
+    return upper(out), note
+
+
+def upper(text):
+    """Верхняя граница цены. Двойная цена схлопывается в большую."""
+    b = upd_shipments.bounds(text)
+    return upd_shipments.money(0, max(b)) if b else text
 
 
 def resale_of(r, by_draw, by_name):
@@ -166,7 +178,7 @@ def resale_of(r, by_draw, by_name):
     if not p:
         return AGREE
     out, _ = normalize_price(p)
-    return out or AGREE
+    return upper(out) if out else AGREE
 
 
 def annex4():
@@ -368,15 +380,14 @@ def bounds(text):
 
 
 def total_resale(s):
-    """Общая сумма по реализации. Диапазон остается диапазоном."""
-    lo = hi = 0
+    """Общая сумма по реализации. Двойная цена идет по большей."""
+    total = 0
     for it in s["items"]:
         b = bounds(it.get("resale"))
         if not b:
             return AGREE
-        lo += min(b) * it["qty"]
-        hi += max(b) * it["qty"]
-    return rub(lo) if lo == hi else f"{rub(lo)} - {rub(hi)}"
+        total += max(b) * it["qty"]
+    return rub(total)
 
 
 def annex_sum(rows):
@@ -421,7 +432,8 @@ def sheet_shipped(doc, s, first=False):
                 f"{it['kg']:.1f}".replace(".", ","),
                 upd_shipments.price(it),
                 rub(it["repair"]) if it.get("repair") else "",
-                it.get("resale") or AGREE], W, center=CENTER)
+                upper(it["resale"]) if it.get("resale") else AGREE],
+            W, center=CENTER)
     cells = t.add_row().cells
     merged = cells[0]
     for c in cells[1:3]:
@@ -445,8 +457,8 @@ def sheet_shipped(doc, s, first=False):
         for it in s["items"]) + ".", size=9)
     para(doc, "В строке ИТОГО по столбцам «Стоимость за ед. по "
               "Договору», «Стоимость ремонта» и «Стоимость реализации» "
-              "стоят суммы по всей партии, а не цены единицы. Где цена "
-              "реализации указана диапазоном, сумма тоже диапазон. "
+              "стоят суммы по всей партии, а не цены единицы. Где в "
+              "Договоре цена записана двойной, взята верхняя граница. "
               "Стоимость ремонта в цену по Договору не входит.", size=9)
     notes = [f"{it['name'].split(',')[0]} — {it['src']}"
              for it in s["items"] if it.get("src")]
@@ -506,10 +518,12 @@ def sheet_annex4(doc, data):
               f"«{AGREE}»: по пункту 3.5 Договора до согласования цены "
               f"такая позиция не считается проданной и не подлежит "
               f"передаче в составе партии.", size=9)
-    para(doc, f"По {a['ranges']} позициям цена указана диапазоном. По "
-              f"пункту 3.4 Договора конкретная цена за единицу "
-              f"определяется отдельным письменным согласованием Сторон "
-              f"до передачи соответствующей позиции Покупателю.", size=9,
+    para(doc, "Там, где в приложениях к Договору цена записана "
+              "двойной, в настоящее приложение внесена ВЕРХНЯЯ граница. "
+              "Это относится и к цене по Договору, и к стоимости "
+              "реализации. По пункту 3.4 Договора конкретная цена за "
+              "единицу по таким позициям согласуется Сторонами "
+              "письменно до передачи позиции Покупателю.", size=9,
          after=8)
 
     t = table(doc, HEAD, W)
