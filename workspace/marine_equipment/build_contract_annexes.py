@@ -34,6 +34,7 @@ from collections import defaultdict
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import price_fixes  # noqa: E402
+import container_list  # noqa: E402
 import repair_prices  # noqa: E402
 import upd_shipments  # noqa: E402
 from build_container_spb import plural  # noqa: E402
@@ -73,8 +74,20 @@ def norm_draw(v):
     return "" if NO_DRAW.search(s) else s
 
 
+# одно и то же изделие в разных файлах называется по-разному:
+# в договоре «Клинкет Ду 300», в перечне «Задвижка клинкетная Ду 300».
+# Без этого ориентир реализации по задвижкам не находился совсем.
+SYNONYMS = [
+    (r"задвижк\w*\s+клинкетн\w*", "клинкет"),
+    (r"клинкетн\w*\s+задвижк\w*", "клинкет"),
+    (r"заборной\s+воды", "забортной воды"),
+]
+
+
 def clean(name):
     s = re.sub(r"\(.*?\)", " ", str(name or "").lower())
+    for rx, to in SYNONYMS:
+        s = re.sub(rx, to, s)
     s = re.sub(r"[^0-9a-zа-я]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -157,11 +170,18 @@ def resale_of(r, by_draw, by_name):
 
 
 def annex4():
+    """Приложение 4 из согласованного перечня к отгрузке от 21.10.2026.
+
+    Раньше оно собиралось из нашего свода по учету — 286 позиций и
+    28,99 т. Теперь источник другой: рабочий перечень менеджера, где
+    позиции отобраны под конкретный контейнер, веса паспортные по
+    бронзе, а чертежи и состояние проставлены почти везде.
+    """
     by_draw, by_name = price_index()
     rd, rn = price_index("Ориентир реализации")
     rows = []
-    for r in rows_all():
-        mat = material(asrow(r))
+    for r in container_list.read():
+        mat = r["Материал"]
         if mat in BRONZE and r["вес_ед"]:
             # решение собственника: бронза и латунь считаются от веса
             # по ставке за килограмм, а не по старым ценам договора
@@ -171,37 +191,36 @@ def annex4():
             price, how = price_of(r, by_draw, by_name)
         rows.append({
             "name": r["Наименование"],
-            "draw": r.get("Чертеж") or "",
-            "du": int(r.get("Ду") or du_of(r["Наименование"]) or 0),
-            "ru": ru_of(r),
-            "qty": int(r["Штук"]),
+            "draw": r["Чертеж"],
+            "du": r["Ду"],
+            "ru": r["Ру"],
+            "qty": r["Штук"],
             "unit_kg": r["вес_ед"],
             "kg": round(r["вес"]),
+            "cond": r["Состояние"],
+            "wheels": r["Маховиков"],
             "price": price,
             "repair": repair_prices.price(kind_of(r["Наименование"]),
-                                          int(r.get("Ду") or 0),
-                                          r.get("Состояние")),
+                                          r["Ду"], r["Состояние"]),
             "resale": resale_of(r, rd, rn),
             "how": how,
             "material": mat,
-            "group": group_of(r["Наименование"]),
+            "group": r["Группа"],
         })
-    # Сначала вся бронза и латунь, потом прочий материал — сталь,
-    # титан, нержавейка, алюминий. Ставка за килограмм назначена на
-    # бронзу, и позиции, которые по ней не считаются, не должны
-    # мешаться внутри бронзовых групп: их цена согласуется отдельно.
+    # Порядок групп — как в перечне: так его составил менеджер и так
+    # грузят. Позиции не из бронзы выносятся в конец отдельными
+    # группами: ставка за килограмм на них не распространяется.
+    order = []
+    for r in rows:
+        if r["group"] not in order:
+            order.append(r["group"])
     blocks = []
     for bronze in (True, False):
-        part = [r for r in rows if (r["material"] in BRONZE) == bronze]
-        if not part:
-            continue
-        by_group = defaultdict(list)
-        for r in part:
-            by_group[r["group"]].append(r)
-        shaped = {g: [{"Ду": i["du"], "вес": i["kg"]} for i in items]
-                  for g, items in by_group.items()}
-        for g in group_order(shaped):
-            items = sorted(by_group[g], key=lambda x: (-x["du"], x["name"]))
+        for g in order:
+            items = [r for r in rows if r["group"] == g
+                     and (r["material"] in BRONZE) == bronze]
+            if not items:
+                continue
             blocks.append({
                 "group": g if bronze else f"{g} — не бронза",
                 "bronze": bronze,
@@ -210,8 +229,6 @@ def annex4():
                 "items": items,
             })
     return rows, blocks
-
-
 
 
 FONT = "Times New Roman"
@@ -472,7 +489,8 @@ def sheet_annex4(doc, data):
               f"производится контейнером из г. Владивостока в "
               f"г. Санкт-Петербург за счет Продавца (пункт 2.1 "
               f"Договора). Всего {a['positions']} позиций, "
-              f"{rub(a['qty'])} шт, {a['kg'] / 1000:.2f} т.", size=9)
+              f"{rub(a['qty'])} шт, "
+              + f"{a['kg'] / 1000:.2f}".replace(".", ",") + " т.", size=9)
     rate = f"{upd_shipments.BRONZE_RATE:,.2f}".replace(",", " ") \
         .replace(".", ",")
     tons = f"{a['by_rate_kg'] / 1000:.2f}".replace(".", ",")
