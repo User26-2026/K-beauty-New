@@ -38,7 +38,7 @@ import container_list  # noqa: E402
 import repair_prices  # noqa: E402
 import upd_shipments  # noqa: E402
 from build_container_spb import plural  # noqa: E402
-from build_logistics_compare import rows_all  # noqa: E402
+from build_logistics_compare import board, rows_all  # noqa: E402
 from build_picking_list import TAIL, group_order, ru_of  # noqa: E402
 from build_container_spb import asrow  # noqa: E402
 from build_shipment_spb import material  # noqa: E402
@@ -61,6 +61,21 @@ AGREE = "по согласованию"
 # нержавейка и алюминий по ней не считаются: ставка назначена на
 # бронзу, а они стоят других денег
 BRONZE = ("бронза/латунь", "бронза", "латунь")
+
+# Группы, которые не разделяются по материалу: вентиляционные головки
+# идут одним блоком, хотя воздушно-квадратные бронзовые, а грибки АМГ
+# алюминиевые. Для покупателя это один товар, рвать его по материалу
+# незачем — цена у алюминиевых все равно «по согласованию».
+KEEP_TOGETHER = ("Головки вентиляционные",)
+
+# Клапаны с электромагнитным управлением по ставке за килограмм не
+# считаются, решение собственника: цена у них не от массы металла, а
+# от привода и катушки. Поле цены остается пустым.
+NO_RATE = re.compile(r"электромагнитн", re.I)
+
+# Сколько тонн разрешено грузить в контейнер. Решение собственника:
+# не больше 25 т брутто, с доской и упаковкой.
+LIMIT_KG = 25_000
 
 
 # «без чертежа» и подобное — это пометка, что номера нет, а не номер.
@@ -194,7 +209,9 @@ def annex4():
     rows = []
     for r in container_list.read():
         mat = r["Материал"]
-        if mat in BRONZE and r["вес_ед"]:
+        if NO_RATE.search(r["Наименование"]):
+            price, how = "", "ставка не применяется, цена отдельно"
+        elif mat in BRONZE and r["вес_ед"]:
             # решение собственника: бронза и латунь считаются от веса
             # по ставке за килограмм, а не по старым ценам договора
             price = rub(round(r["вес_ед"] * upd_shipments.BRONZE_RATE))
@@ -229,8 +246,11 @@ def annex4():
     blocks = []
     for bronze in (True, False):
         for g in order:
+            whole = g in KEEP_TOGETHER
+            if whole and not bronze:
+                continue
             items = [r for r in rows if r["group"] == g
-                     and (r["material"] in BRONZE) == bronze]
+                     and (whole or (r["material"] in BRONZE) == bronze)]
             if not items:
                 continue
             blocks.append({
@@ -518,6 +538,17 @@ def sheet_annex4(doc, data):
               f"«{AGREE}»: по пункту 3.5 Договора до согласования цены "
               f"такая позиция не считается проданной и не подлежит "
               f"передаче в составе партии.", size=9)
+    brd = board(a["kg"])[0]
+    gross = a["kg"] + brd
+    left = LIMIT_KG - gross
+    para(doc, f"Вес груза {rub(a['kg'])} кг. Перекладочная доска "
+              f"добавляет {rub(round(brd))} кг, брутто "
+              f"{rub(round(gross))} кг при пределе погрузки "
+              f"{rub(LIMIT_KG)} кг на контейнер. "
+              + (f"Запас {rub(round(left))} кг."
+                 if left >= 0 else
+                 f"ПРЕВЫШЕНИЕ {rub(round(-left))} кг, перечень надо "
+                 f"сокращать."), size=9)
     para(doc, "Там, где в приложениях к Договору цена записана "
               "двойной, в настоящее приложение внесена ВЕРХНЯЯ граница. "
               "Это относится и к цене по Договору, и к стоимости "
@@ -633,6 +664,16 @@ def main():
           f"{a['ranges_kg'] / 1000:>5.2f} т — пункт 3.4")
     print(f"  «{AGREE}» {a['open']:>4} поз, "
           f"{a['open_kg'] / 1000:>5.2f} т — пункт 3.5, продано не считается")
+    brd = board(a["kg"])[0]
+    gross = a["kg"] + brd
+    print(f"\nгруз {a['kg']:,.0f} кг + доска {brd:,.0f} кг = "
+          f"{gross:,.0f} кг брутто".replace(",", " "))
+    left = LIMIT_KG - gross
+    print(f"предел {LIMIT_KG:,.0f} кг — "
+          .replace(",", " ")
+          + (f"УКЛАДЫВАЕМСЯ, запас {left:,.0f} кг ({left / LIMIT_KG:.0%})"
+             if left >= 0 else f"ПРЕВЫШЕНИЕ {-left:,.0f} кг")
+          .replace(",", " "))
 
 
 if __name__ == "__main__":
