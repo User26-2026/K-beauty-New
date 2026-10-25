@@ -245,7 +245,7 @@ def collect(limit_kg=LIMIT_KG, limit_m3=LIMIT_M3):
             "бронза": is_bronze(r) and mat != "сталь",
             "титан": is_titanium(r),
             "Выделено": (mat if mat
-                         else "бронза/латунь" if is_bronze(r)
+                         else "бронза" if is_bronze(r)
                          else "титан" if is_titanium(r) else ""),
             "Откуда": r["Локация"],
         })

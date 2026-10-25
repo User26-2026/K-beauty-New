@@ -176,7 +176,9 @@ def material(r):
         return "нержавейка"
     if STEEL.search(n) or STEEL_KINDS.search(n):
         return "сталь"
-    return "бронза/латунь"
+    # Вся остальная арматура бронзовая, подтверждено собственником
+    # 25.10.2026.
+    return "бронза"
 
 
 def item_kind(r):

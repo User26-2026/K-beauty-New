@@ -308,7 +308,11 @@ def main():
     up = sorted([r for r in cmp if r["дельта"] > 0],
                 key=lambda x: -x["дельта_всего"])
     same = [r for r in cmp if r["дельта"] == 0]
-    nocmp = [r for r in rows if r["по ставке"] and not r["старая"]]
+    # «по ставке» и без старой цены — это новая цена, а не изменение.
+    # Позиции, которые от металла не считаются, сюда не попадают:
+    # новой цены у них нет вовсе.
+    nocmp = [r for r in rows
+             if r["по ставке"] and r["новая"] and not r["старая"]]
 
     wb = Workbook()
     sheet_summary(wb, rows, cmp, down, up, same, nocmp)
