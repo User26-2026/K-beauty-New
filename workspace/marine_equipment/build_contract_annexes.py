@@ -84,6 +84,11 @@ NO_RATE = re.compile(r"электромагнитн", re.I)
 # клапан, а проход через переборку.
 NO_RATE_NAME = re.compile(r"редукцион", re.I)
 NO_RATE_MATERIAL = ("сталь", "титан", "алюминий", "нержавейка")
+
+# Новая арматура по ставке тоже не считается, решение собственника от
+# 25.10.2026: новое стоит дороже бывшего в употреблении, и цена по
+# нему согласовывается отдельно. Ремонт у нового и так не ставится.
+NEW = re.compile(r"\bнов", re.I)
 HIGH_RU = 100
 VALVE = re.compile(r"клапан|кран", re.I)
 
@@ -94,8 +99,10 @@ def ru_value(text):
     return int(m.group()) if m else 0
 
 
-def no_rate(name, ru, mat):
+def no_rate(name, ru, mat, cond=""):
     """Почему позиция не считается от металла. Пусто — считается."""
+    if NEW.search(cond or ""):
+        return "новое, цена согласовывается отдельно"
     if NO_RATE.search(name or ""):
         return "электромагнитный, цена в приводе и катушке"
     if NO_RATE_NAME.search(name or ""):
@@ -250,9 +257,13 @@ def annex4():
     rows = []
     for r in container_list.read():
         mat = r["Материал"]
-        skip = no_rate(r["Наименование"], r["Ру"], mat)
+        skip = no_rate(r["Наименование"], r["Ру"], mat, r["Состояние"])
         if NO_RATE.search(r["Наименование"]):
             price, how = "", "ставка не применяется, цена отдельно"
+        elif NEW.search(r["Состояние"] or ""):
+            # новое дороже бывшего в употреблении, и старая цена
+            # договора по нему не годится: ставим «по согласованию»
+            price, how = AGREE, skip
         elif skip:
             # цена из договора, если она там есть, иначе согласование
             price, how = price_of(r, by_draw, by_name)
