@@ -251,12 +251,17 @@ def sheet_summary(wb, items, ship, per_kg, all_kg, comp):
          "по всей сопоставленной арматуре"),
         ("ВЕСЬ СКЛАД В ЛОМЕ, руб",
          round(sum(scrap.value(r["Материал"], r["вес"]) or 0 for r in items)),
-         f"латунь {scrap.SCRAP['латунь']}, бронза "
-         f"{scrap.SCRAP['бронза']}, сталь {scrap.SCRAP['сталь']} руб за кг. "
-         "Считаем по латуни — осторожнее"),
-        ("Он же по бронзе 600 руб за кг",
-         round(sum(r["вес"] for r in items) * scrap.SCRAP["бронза"]),
-         "верхняя граница лома"),
+         f"бронза {scrap.SCRAP['бронза']}, латунь "
+         f"{scrap.SCRAP['латунь']}, сталь {scrap.SCRAP['сталь']} руб за кг. "
+         "Класс «бронза/латунь» считаем по бронзе"),
+        (f"Он же по латуни {scrap.SCRAP['латунь']} руб за кг",
+         round(sum(r["вес"] for r in items) * scrap.SCRAP["латунь"]),
+         "нижняя граница, если часть окажется латунью"),
+        (f"Закуп от лома, лом на {scrap.MULTIPLIER}, руб",
+         round(sum(scrap.purchase(r["Материал"], r["вес"]) or 0
+                   for r in items)),
+         "цена по договору и есть лом с коэффициентом: бронза "
+         f"{scrap.purchase_rate('бронза'):,.2f} руб за кг".replace(",", " ")),
         ("Во сколько раз рынок дороже лома",
          round(total / sum(scrap.value(r["Материал"], r["вес"]) or 0
                            for r in items), 1),

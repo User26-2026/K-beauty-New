@@ -10,10 +10,11 @@
 стоят и деньги, и килограммы: бригада смотрит вес и тару, менеджер —
 цену и то, что нельзя грузить без согласования.
 
-Шесть вкладок:
+Семь вкладок:
   Сводка           — итоги, тоннаж против предела, принятые решения
   По группам       — вес и деньги по каждой группе перечня
   Перечень         — все позиции построчно, порядок погрузки
+  Закуп от лома    — ставка приемки, множитель 2,5, цена по материалам
   Укладка          — ярусы, доска, маховики, что на что класть
   Перед погрузкой  — чек-лист, что закрыть до машины
   Снято с отгрузки — что и почему не едет
@@ -31,8 +32,10 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import container_list  # noqa: E402
+import scrap_prices  # noqa: E402
 import upd_shipments  # noqa: E402
-from build_contract_annexes import AGREE, LIMIT_KG, annex4  # noqa: E402
+from build_contract_annexes import (AGREE, LIMIT_KG, NO_RATE,  # noqa: E402
+                                    annex4)
 from build_container_spb import plural  # noqa: E402
 from build_logistics_compare import board  # noqa: E402
 
@@ -99,6 +102,29 @@ def val(text):
     return max(b) if b else 0
 
 
+def buy_rate(material):
+    """Закупочная цена за килограмм: цена лома, умноженная на 2,5.
+
+    Договоренность с Антоном Бурыкиным от 25.10.2026. По бронзе это
+    745 * 2,5 = 1 862,50 руб — ровно ставка, по которой посчитана вся
+    бронза в спецификации. Для стали, титана, алюминия и нержавейки
+    формула та же, но ставка приемки другая.
+    """
+    return scrap_prices.purchase_rate(material)
+
+
+def buy(row):
+    """Закупочная цена позиции.
+
+    У электромагнитных клапанов ее нет: там платят за привод и
+    катушку, а не за металл, и считать их от веса нельзя.
+    """
+    if NO_RATE.search(row["name"]):
+        return 0.0
+    r = buy_rate(row["material"])
+    return (r or 0) * row["unit_kg"] * row["qty"]
+
+
 def collect():
     """Строки спецификации в порядке погрузки, с деньгами и тарой."""
     rows, blocks = annex4()
@@ -124,6 +150,7 @@ def sheet_summary(wb, rows, blocks):
     gross = kg + brd
     left = LIMIT_KG - gross
     money = sum(val(r["price"]) * r["qty"] for r in rows)
+    purchase = sum(buy(r) for r in rows)
     repair = sum((r["repair"] or 0) * r["qty"] for r in rows)
     resale = sum(val(r["resale"]) * r["qty"] for r in rows)
     wheels = sum(r["wheels"] or 0 for r in rows)
@@ -158,6 +185,9 @@ def sheet_summary(wb, rows, blocks):
          else "перечень надо сокращать",
          OK_FILL if left >= 0 else WARN_FILL),
         ("", "", "", None),
+        ("Закуп от лома", f"{rub(round(purchase))} руб",
+         "цена приемки, умноженная на 2,5 — договоренность с Антоном "
+         "от 25.10.2026", GROUP_FILL),
         ("Сумма по Договору", f"{rub(money)} руб",
          "по ставке 1 862,50 руб за кг на бронзу и латунь", None),
         ("Ремонт", f"{rub(repair)} руб",
@@ -182,11 +212,18 @@ def sheet_summary(wb, rows, blocks):
     ws.cell(row=row, column=1, value="Что решили и по чему считаем").font = SUB
     row += 1
     for t in [
+        "Закупочная цена считается ОТ ЛОМА: цена приемки за килограмм, "
+        "умноженная на 2,5. По бронзе это 745 * 2,5 = 1 862,50 руб за "
+        "килограмм — та самая ставка, по которой посчитана спецификация.",
         "Цена бронзы и латуни считается ОТ ВЕСА: 1 862,50 руб за "
         "килограмм. Уточнится вес при замере — цена пересчитается сама.",
-        "Сталь, титан и алюминий по ставке не считаются, у них цена "
-        "«по согласованию». Электромагнитные клапаны тоже: там платят "
-        "за привод и катушку, а не за металл.",
+        "Сталь, титан и алюминий в цену по Договору по ставке не "
+        "вошли, у них там «по согласованию». Закуп от лома по ним "
+        "посчитан, но он низкий: по стали это 47,50 руб за кг, а "
+        "стальная арматура столько не стоит. Цену согласовывать "
+        "отдельно, на лом не опираться.",
+        "Электромагнитные клапаны не считаются ни по ставке, ни от "
+        "лома: там платят за привод и катушку, а не за металл.",
         "Где в договоре цена записана двойной, берем ВЕРХНЮЮ границу. "
         "Внутри диапазона конкретную цену по пункту 3.4 все равно "
         "согласовывают письменно до передачи.",
@@ -204,27 +241,29 @@ def sheet_summary(wb, rows, blocks):
         row += 1
     widths(ws, [26, 24, 62])
     return dict(kg=kg, qty=qty, brd=brd, gross=gross, left=left,
-                money=money, repair=repair, resale=resale, wheels=wheels)
+                money=money, purchase=purchase, repair=repair,
+                resale=resale, wheels=wheels)
 
 
 COLS_GROUP = [
     ("Группа", 34), ("Позиций", 8), ("Штук", 8), ("Вес, кг", 10),
     ("Доля веса", 9), ("Вес нарастающим, кг", 12),
-    ("По Договору, руб", 14), ("Ремонт, руб", 12),
-    ("Реализация, руб", 14), ("Руб за кг", 10),
+    ("Закуп от лома, руб", 14), ("По Договору, руб", 14),
+    ("Ремонт, руб", 12), ("Реализация, руб", 14), ("Руб за кг", 10),
 ]
 
 
 def sheet_groups(wb, rows):
     ws = wb.create_sheet("По группам")
     agg = defaultdict(lambda: dict(n=0, qty=0, kg=0.0, money=0.0,
-                                   repair=0.0, resale=0.0))
+                                   buy=0.0, repair=0.0, resale=0.0))
     for r in rows:
         a = agg[r["block"]]
         a["n"] += 1
         a["qty"] += r["qty"]
         a["kg"] += r["kg"]
         a["money"] += val(r["price"]) * r["qty"]
+        a["buy"] += buy(r)
         a["repair"] += (r["repair"] or 0) * r["qty"]
         a["resale"] += val(r["resale"]) * r["qty"]
     total_kg = sum(a["kg"] for a in agg.values())
@@ -250,17 +289,19 @@ def sheet_groups(wb, rows):
         row = put(ws, row, [
             g, a["n"], a["qty"], round(a["kg"]),
             f"{a['kg'] / total_kg:.1%}", round(run),
-            round(a["money"]), round(a["repair"]), round(a["resale"]),
+            round(a["buy"]), round(a["money"]), round(a["repair"]),
+            round(a["resale"]),
             round(a["money"] / a["kg"]) if a["kg"] else "",
-        ], wrap=(1,), center=(2, 3, 5), money=(4, 6, 7, 8, 9, 10))
+        ], wrap=(1,), center=(2, 3, 5), money=(4, 6, 7, 8, 9, 10, 11))
     row = put(ws, row, [
         "ИТОГО", sum(a["n"] for a in agg.values()),
         sum(a["qty"] for a in agg.values()), round(total_kg), "100%",
-        round(total_kg), round(sum(a["money"] for a in agg.values())),
+        round(total_kg), round(sum(a["buy"] for a in agg.values())),
+        round(sum(a["money"] for a in agg.values())),
         round(sum(a["repair"] for a in agg.values())),
         round(sum(a["resale"] for a in agg.values())),
         round(sum(a["money"] for a in agg.values()) / total_kg),
-    ], center=(2, 3, 5), money=(4, 6, 7, 8, 9, 10), font=BOLD,
+    ], center=(2, 3, 5), money=(4, 6, 7, 8, 9, 10, 11), font=BOLD,
         fill=GROUP_FILL)
     ws.freeze_panes = f"A{start + 1}"
     widths(ws, [w for _, w in COLS_GROUP])
@@ -272,7 +313,8 @@ def sheet_groups(wb, rows):
 COLS_ITEM = [
     ("№", 5), ("Наименование", 46), ("Чертеж", 18), ("Ду", 6), ("Ру", 6),
     ("Сост.", 8), ("Шт", 6), ("Вес ед., кг", 9), ("Вес всего, кг", 10),
-    ("Маховики, шт", 9), ("Тара", 12), ("По Договору за ед., руб", 13),
+    ("Маховики, шт", 9), ("Тара", 12), ("Закуп за кг, руб", 11),
+    ("Закуп за ед., руб", 12), ("По Договору за ед., руб", 13),
     ("Ремонт за ед., руб", 11), ("Реализация за ед., руб", 13),
     ("Материал", 13),
 ]
@@ -318,7 +360,11 @@ def sheet_items(wb, rows):
             r["ru"] or "", r["cond"], r["qty"], round(r["unit_kg"], 1),
             round(r["kg"]),
             int(r["wheels"]) if r["wheels"] else "",
-            r["pack"], r["price"] or "цена отдельно",
+            r["pack"],
+            rub(round(buy_rate(r["material"]))) if not NO_RATE.search(r["name"])
+            else "",
+            rub(round(buy(r) / r["qty"])) if buy(r) else "",
+            r["price"] or "цена отдельно",
             rub(r["repair"]) if r["repair"] else "", r["resale"],
             r["material"],
         ], wrap=(2,), center=(1, 4, 5, 6, 7, 8, 9, 10), fill=fill)
@@ -327,6 +373,107 @@ def sheet_items(wb, rows):
                           f"{get_column_letter(len(COLS_ITEM))}{row - 1}")
     widths(ws, [w for _, w in COLS_ITEM])
     ws.print_title_rows = f"{start}:{start}"
+    ws.page_setup.orientation = "landscape"
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+
+
+COLS_BUY = [
+    ("Материал", 18), ("Позиций", 9), ("Штук", 9), ("Вес, кг", 11),
+    ("Лом, руб за кг", 12), ("Множитель", 10),
+    ("Закуп, руб за кг", 13), ("Закуп, руб", 14),
+    ("По Договору, руб", 14), ("Разница, руб", 13),
+]
+
+
+def sheet_buy(wb, rows):
+    """Откуда берется закупочная цена и что она дает по материалам."""
+    ws = wb.create_sheet("Закуп от лома")
+    ws["A1"] = "Закупочная цена: лом, умноженный на 2,5"
+    ws["A1"].font = TITLE
+    ws["A2"] = ("Договоренность с Антоном Бурыкиным от 25.10.2026. Цены "
+                "приемки на 13.10.2026. По бронзе 745 * 2,5 = 1 862,50 "
+                "руб за кг — это и есть ставка, по которой посчитана "
+                "вся бронза в спецификации.")
+    ws["A2"].font = NOTE
+
+    agg = defaultdict(lambda: dict(n=0, qty=0, kg=0.0, buy=0.0, money=0.0))
+    for r in rows:
+        a = agg[r["material"] if not NO_RATE.search(r["name"])
+                else "цена не от металла"]
+        a["n"] += 1
+        a["qty"] += r["qty"]
+        a["kg"] += r["kg"]
+        a["buy"] += buy(r)
+        a["money"] += val(r["price"]) * r["qty"]
+
+    start = 4
+    for i, (h, _) in enumerate(COLS_BUY, start=1):
+        ws.cell(row=start, column=i, value=h)
+    head(ws, start, len(COLS_BUY))
+    row = start + 1
+    order = sorted(agg, key=lambda m: -agg[m]["kg"])
+    for m in order:
+        a = agg[m]
+        rate = buy_rate(m) if m != "цена не от металла" else None
+        scr = scrap_prices.rate(m) if m != "цена не от металла" else None
+        row = put(ws, row, [
+            m, a["n"], a["qty"], round(a["kg"]),
+            scr if scr else "—",
+            f"{scrap_prices.MULTIPLIER:.1f}".replace(".", ",")
+            if rate else "—",
+            round(rate, 2) if rate else "—",
+            round(a["buy"]) if a["buy"] else "—",
+            round(a["money"]) if a["money"] else "—",
+            round(a["money"] - a["buy"]) if a["buy"] and a["money"] else "—",
+        ], center=(2, 3, 6), money=(4, 5, 7, 8, 9, 10),
+            fill=None if m in scrap_prices.BY_MATERIAL else WARN_FILL)
+    row = put(ws, row, [
+        "ИТОГО", sum(a["n"] for a in agg.values()),
+        sum(a["qty"] for a in agg.values()),
+        round(sum(a["kg"] for a in agg.values())), "", "", "",
+        round(sum(a["buy"] for a in agg.values())),
+        round(sum(a["money"] for a in agg.values())),
+        round(sum(a["money"] - a["buy"] for a in agg.values())),
+    ], center=(2, 3), money=(4, 8, 9, 10), font=BOLD, fill=GROUP_FILL)
+
+    row += 1
+    ws.cell(row=row, column=1, value="Прайс приемки на 13.10.2026").font = SUB
+    row += 1
+    for i, h in enumerate(["Металл", "Лом, руб за кг", "Закуп, руб за кг"],
+                          start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, 3, height=20)
+    row += 1
+    for metal, price in sorted(scrap_prices.SCRAP.items(),
+                               key=lambda kv: -kv[1]):
+        row = put(ws, row, [metal, price,
+                            round(price * scrap_prices.MULTIPLIER, 2)],
+                  money=(2, 3))
+
+    row += 1
+    for t in [
+        "Лом — это нижняя граница цены. Любая позиция стоит хотя бы "
+        "как металл, и ниже продавать незачем: сдать быстрее и без "
+        "споров по состоянию.",
+        "Класс «бронза/латунь» считаем ПО БРОНЗЕ, 745 руб за кг: так "
+        "решил собственник, и из этого выходит ставка 1 862,50.",
+        "По стали множитель дает 47,50 руб за кг. Для стальной "
+        "арматуры это мало — у конкурента стальная задвижка Ду200 "
+        "стоит 40 000 руб. По стали, титану и нержавейке цену "
+        "согласовываем отдельно, а не от лома.",
+        "Если приемка поменяет цены, пересчитывается и ставка: она "
+        "считается из прайса, а не вписана руками.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + t)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=row, start_column=1,
+                       end_row=row, end_column=len(COLS_BUY))
+        ws.row_dimensions[row].height = 28
+        row += 1
+
+    widths(ws, [w for _, w in COLS_BUY])
     ws.page_setup.orientation = "landscape"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToWidth = 1
@@ -480,6 +627,7 @@ def main():
     tot = sheet_summary(wb, rows, blocks)
     sheet_groups(wb, rows)
     sheet_items(wb, rows)
+    sheet_buy(wb, rows)
     sheet_stowage(wb, rows, tot)
     sheet_checklist(wb, rows, tot)
     sheet_excluded(wb)
@@ -495,7 +643,9 @@ def main():
     print("УКЛАДЫВАЕМСЯ, запас " + rub(round(tot["left"])) + " кг"
           if tot["left"] >= 0
           else "ПРЕВЫШЕНИЕ " + rub(round(-tot["left"])) + " кг")
-    print(f"\nпо договору {rub(tot['money'])}, ремонт {rub(tot['repair'])}, "
+    print(f"\nзакуп от лома {rub(round(tot['purchase']))} руб "
+          f"(лом * {scrap_prices.MULTIPLIER})")
+    print(f"по договору {rub(tot['money'])}, ремонт {rub(tot['repair'])}, "
           f"реализация {rub(tot['resale'])} руб")
     print(f"маховиков {rub(tot['wheels'])} шт")
 
