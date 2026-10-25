@@ -270,7 +270,7 @@ COLS_GROUP = [
     ("Группа", 34), ("Позиций", 8), ("Штук", 8), ("Вес, кг", 10),
     ("Доля веса", 9), ("Вес нарастающим, кг", 12),
     ("1. ЗАКУП по Договору, руб", 15), ("2. Ремонт, руб", 12),
-    ("3. Реализация, руб", 14), ("Закуп, руб за кг", 11),
+    ("3. Реализация, руб", 14),
 ]
 
 
@@ -314,16 +314,14 @@ def sheet_groups(wb, rows):
             g, a["n"], a["qty"], round(a["kg"]),
             f"{a['kg'] / total_kg:.1%}", round(run),
             round(a["money"]), round(a["repair"]), round(a["resale"]),
-            round(a["money"] / a["kg"]) if a["kg"] else "",
-        ], wrap=(1,), center=(2, 3, 5), money=(4, 6, 7, 8, 9, 10))
+        ], wrap=(1,), center=(2, 3, 5), money=(4, 6, 7, 8, 9))
     row = put(ws, row, [
         "ИТОГО", sum(a["n"] for a in agg.values()),
         sum(a["qty"] for a in agg.values()), round(total_kg), "100%",
         round(total_kg), round(sum(a["money"] for a in agg.values())),
         round(sum(a["repair"] for a in agg.values())),
         round(sum(a["resale"] for a in agg.values())),
-        round(sum(a["money"] for a in agg.values()) / total_kg),
-    ], center=(2, 3, 5), money=(4, 6, 7, 8, 9, 10), font=BOLD,
+    ], center=(2, 3, 5), money=(4, 6, 7, 8, 9), font=BOLD,
         fill=GROUP_FILL)
     ws.freeze_panes = f"A{start + 1}"
     widths(ws, [w for _, w in COLS_GROUP])
@@ -335,7 +333,7 @@ def sheet_groups(wb, rows):
 COLS_ITEM = [
     ("№", 5), ("Наименование", 46), ("Чертеж", 18), ("Ду", 6), ("Ру", 6),
     ("Сост.", 8), ("Шт", 6), ("Вес ед., кг", 9), ("Вес всего, кг", 10),
-    ("Маховики, шт", 9), ("Тара", 12), ("Ставка закупа, руб за кг", 11),
+    ("Маховики, шт", 9), ("Тара", 12),
     ("1. ЗАКУП по Договору за ед., руб", 14),
     ("2. Ремонт за ед., руб", 12),
     ("3. Реализация за ед., руб", 14),
@@ -384,7 +382,6 @@ def sheet_items(wb, rows):
             round(r["kg"]),
             int(r["wheels"]) if r["wheels"] else "",
             r["pack"],
-            rub(round(buy_rate(r["material"]))) if not skip_reason(r) else "",
             r["price"] or "цена отдельно",
             rub(r["repair"]) if r["repair"] else "", r["resale"],
             r["material"],
