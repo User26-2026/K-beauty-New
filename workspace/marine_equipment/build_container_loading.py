@@ -38,14 +38,23 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import container_list  # noqa: E402
+import gate_geometry  # noqa: E402
 import scrap_prices  # noqa: E402
 import upd_shipments  # noqa: E402
-from build_contract_annexes import (AGREE, LIMIT_KG,  # noqa: E402
-                                    annex4, no_rate)
+from build_contract_annexes import (AGREE, BOARD_KG,  # noqa: E402
+                                    CONTAINER, LIMIT_KG, annex4, no_rate)
 from build_container_spb import plural  # noqa: E402
 from build_logistics_compare import board  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parents[2] / "outputs" / "marine_equipment"
+
+# Длина пола внутри сорокафутового контейнера, м. У двадцатифутового
+# 5,898 — туда задвижки в один слой не ложатся вовсе.
+FLOOR_L = 12.032
+
+# С какого диаметра задвижка кладется на пол. Ду125 и ниже легкие,
+# они идут в ящики и наверх, пол ими не занимаем.
+BIG_DU = 200
 
 FONT = "Arial"
 HEAD_FILL = PatternFill("solid", fgColor="1F3864")
@@ -158,7 +167,7 @@ def sheet_summary(wb, rows, blocks):
     ws.title = "Сводка"
     kg = sum(r["kg"] for r in rows)
     qty = sum(r["qty"] for r in rows)
-    brd = board(kg)[0]
+    brd = BOARD_KG
     gross = kg + brd
     left = LIMIT_KG - gross
     money = sum(val(r["price"]) * r["qty"] for r in rows)
@@ -170,7 +179,8 @@ def sheet_summary(wb, rows, blocks):
     no_price = [r for r in rows if not r["price"]]
     no_metal = [r for r in rows if skip_reason(r)]
 
-    ws["A1"] = "Погрузка контейнера в Санкт-Петербург"
+    ws["A1"] = ("Погрузка контейнера в Санкт-Петербург, "
+                f"{CONTAINER}")
     ws["A1"].font = TITLE
     ws["A2"] = ("Перечень от 21.10.2026 со снятыми позициями. Все цифры "
                 "пересчитываются из исходных файлов, руками в этот файл "
@@ -188,10 +198,10 @@ def sheet_summary(wb, rows, blocks):
         ("Штук", rub(qty), "единиц товара", None),
         ("Вес груза", f"{rub(kg)} кг", "без упаковки, по паспорту", None),
         ("Перекладочная доска", f"{rub(round(brd))} кг",
-         "сырая необрезная, 0,035 куб. м на тонну груза", None),
+         "сырая необрезная, цифра собственника на эту погрузку", None),
         ("БРУТТО", f"{rub(round(gross))} кг", "груз плюс доска", GROUP_FILL),
-        ("Предел погрузки", f"{rub(LIMIT_KG)} кг", "решение собственника",
-         None),
+        ("Предел погрузки", f"{rub(LIMIT_KG)} кг",
+         f"{CONTAINER} контейнер, решение собственника", None),
         ("ЗАПАС" if left >= 0 else "ПРЕВЫШЕНИЕ",
          f"{rub(round(abs(left)))} кг ({abs(left) / LIMIT_KG:.0%})",
          "укладываемся, можно догружать" if left >= 0
@@ -556,8 +566,7 @@ def sheet_stowage(wb, rows, tot):
     row = start + 1
     for tier, what, items, how in [
         ("Настил", "сырая необрезная доска по полу", None,
-         f"{rub(round(tot['brd']))} кг доски на всю укладку, "
-         f"0,035 куб. м на тонну груза"),
+         f"{rub(round(tot['brd']))} кг доски на всю укладку"),
         ("1 ярус", "задвижки клинкетные", gates,
          "штоком ГОРИЗОНТАЛЬНО, фланец на фланец не кладем никогда, "
          "съемные маховики снимаем в ящик с биркой"),
@@ -578,6 +587,65 @@ def sheet_stowage(wb, rows, tot):
             else round(tot["brd"]),
             how,
         ], wrap=(2, 6), center=(3, 4), height=46)
+
+    row += 2
+    ws.cell(row=row, column=1,
+            value=f"Пол контейнера: {CONTAINER}, "
+                  f"{FLOOR_L:.2f} м в длину").font = SUB
+    row += 1
+    for i, h in enumerate(["Ду", "Штук", "Поперек, шт", "Рядов",
+                           "Глубина, м", "Высота стопки, м"], start=1):
+        ws.cell(row=row, column=i, value=h)
+    head(ws, row, 6, height=20)
+    row += 1
+    counts = defaultdict(int)
+    for r in gates:
+        counts[r["du"] or 0] += r["qty"]
+    big = 0.0
+    small_gates = 0.0
+    for du in sorted(counts, reverse=True):
+        n = gate_geometry.across(du)
+        nrows = -(-counts[du] // n)
+        d = gate_geometry.depth(du) * nrows
+        if du >= BIG_DU:
+            big += d
+        else:
+            small_gates += d
+        row = put(ws, row, [
+            f"Ду{du}" if du else "без Ду", counts[du], n, nrows,
+            round(d, 2), round(gate_geometry.stack(du), 2),
+        ], center=(1, 2, 3, 4, 5, 6),
+            fill=None if du >= BIG_DU else MARK_FILL)
+    free = FLOOR_L - big
+    row = put(ws, row, [
+        f"Крупные от Ду{BIG_DU}", "", "", "", round(big, 2), "",
+    ], center=(2, 3, 4, 5, 6), font=BOLD, fill=GROUP_FILL)
+    row = put(ws, row, [
+        "Свободный пол", "", "", "", round(free, 2),
+        f"{int(free / gate_geometry.CRATE_L) * 2} мест под ящики на полу",
+    ], center=(2, 3, 4, 5), font=BOLD,
+        fill=OK_FILL if free >= 0 else WARN_FILL)
+
+    row += 1
+    for t in [
+        f"Задвижки от Ду{BIG_DU} просят {big:.2f} м пола при длине "
+        f"{FLOOR_L:.2f} м. Они ложатся В ОДИН СЛОЙ, и остается "
+        f"{free:.2f} м свободного пола." if free >= 0 else
+        f"Задвижки от Ду{BIG_DU} просят {big:.2f} м пола при длине "
+        f"{FLOOR_L:.2f} м — в один слой НЕ ложатся, не хватает "
+        f"{-free:.2f} м.",
+        f"Мелкие задвижки Ду125 и ниже заняли бы еще "
+        f"{small_gates:.2f} м пола. Их на пол не кладем: они легкие, "
+        f"идут в ящики и наверх. Желтым они и помечены.",
+        "Габариты справочные, по типовым судовым бронзовым клинкетам. "
+        "Замерить на первых рядах в день погрузки: справочник уже "
+        "ошибся на массах почти вдвое.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + t)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[row].height = 30
+        row += 1
 
     row += 1
     ws.cell(row=row, column=1, value="Чего делать нельзя").font = SUB
