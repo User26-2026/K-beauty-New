@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Что грузим в контейнер: один файл для дня погрузки.
+"""Что уехало в контейнере: один файл по факту отгрузки 26.10.2026.
 
-Сюда сведено все, о чем договаривались: перечень от 21.10.2026, снятые
+Контейнер загружен и ушел в Петербург 26.10.2026. Источник — ФАКТ
+погрузки, а не план: в приложение 4 и в этот файл идет то, что
+действительно уехало. План от 21.10 остался для сверки.
+
+Сюда сведено все, о чем договаривались: фактический перечень, снятые
 позиции, цены по ставке на бронзу, ремонт по прайсу мастерской,
-ориентир реализации, веса по паспорту, маховики, тара, предел 25 тонн
+ориентир реализации, веса по паспорту, маховики, тара, предел 26 тонн
 и правила укладки.
 
 Денег в файле три колонки, и это цепочка, а не варианты одной цены:
@@ -21,11 +25,13 @@
   По группам       — вес и деньги по каждой группе перечня
   Перечень         — все позиции построчно, порядок погрузки
   Как считаем цены — закуп, ремонт, продажная цена, ставка приемки
+  Упаковка         — что в каком месте лежит, сверка с листами
+  План и факт      — чем отгрузка отличается от перечня 21.10
   Укладка          — ярусы, доска, маховики, что на что класть
-  Перед погрузкой  — чек-лист, что закрыть до машины
-  Снято с отгрузки — что и почему не едет
+  Что закрыть      — чек-лист, в первую очередь цены
+  Снято с отгрузки — что и почему не поехало
 
-Результат: outputs/marine_equipment/Контейнер_погрузка.xlsx
+Результат: outputs/marine_equipment/Контейнер_отгружено_26.10.xlsx
 """
 
 import pathlib
@@ -39,6 +45,7 @@ from openpyxl.utils import get_column_letter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import container_list  # noqa: E402
 import gate_geometry  # noqa: E402
+import packing_lists  # noqa: E402
 import scrap_prices  # noqa: E402
 import upd_shipments  # noqa: E402
 from build_contract_annexes import (AGREE, BOARD_KG,  # noqa: E402
@@ -179,10 +186,11 @@ def sheet_summary(wb, rows, blocks):
     no_price = [r for r in rows if not r["price"]]
     no_metal = [r for r in rows if skip_reason(r)]
 
-    ws["A1"] = ("Погрузка контейнера в Санкт-Петербург, "
+    ws["A1"] = ("Контейнер в Санкт-Петербург, отгружен 26.10.2026, "
                 f"{CONTAINER}")
     ws["A1"].font = TITLE
-    ws["A2"] = ("Перечень от 21.10.2026 со снятыми позициями. Все цифры "
+    ws["A2"] = ("ФАКТ погрузки, а не план: считается по перечню, "
+                "составленному в день отгрузки. Все цифры "
                 "пересчитываются из исходных файлов, руками в этот файл "
                 "ничего не вписано.")
     ws["A2"].font = NOTE
@@ -543,6 +551,199 @@ def sheet_buy(wb, rows):
     ws.page_setup.fitToWidth = 1
 
 
+COLS_PACK = [
+    ("Место", 18), ("Позиций", 9), ("Штук", 9), ("Вес, кг", 11),
+    ("По упаковочному листу, шт", 13), ("Расхождение, шт", 12),
+    ("Что внутри", 70),
+]
+
+
+def sheet_packing(wb):
+    """Что в каком месте лежит. По этому принимают груз в Петербурге."""
+    ws = wb.create_sheet("Упаковка")
+    ws["A1"] = "Упаковка: что в каком месте"
+    ws["A1"].font = TITLE
+    ws["A2"] = ("Принимать груз в Петербурге надо ПО МЕСТАМ: по пункту "
+                "2.2 Договора на претензии по количеству есть 3 рабочих "
+                "дня с даты получения. Основа — колонка «упаковка» "
+                "перечня, рядом сверка с упаковочными листами.")
+    ws["A2"].font = NOTE
+
+    places = packing_lists.by_place()
+    checks, failed = packing_lists.check()
+    by_num = {f"№ {c['Место']}": c for c in checks}
+
+    start = 4
+    for i, (h, _) in enumerate(COLS_PACK, start=1):
+        ws.cell(row=start, column=i, value=h)
+    head(ws, start, len(COLS_PACK))
+    row = start + 1
+
+    def order(k):
+        c = by_num_key(k)
+        return (k == "без упаковки", c if c else 999, k)
+
+    for k in sorted(places, key=order):
+        rs = places[k]
+        num = by_num_key(k)
+        chk = by_num.get(f"№ {num}") if num else None
+        diff = chk["Расхождение"] if chk else None
+        inside = "; ".join(
+            f"{r['Наименование'][:44]} — {r['Штук']} шт" for r in rs[:6])
+        if len(rs) > 6:
+            inside += f"; и еще {len(rs) - 6}"
+        row = put(ws, row, [
+            k, len(rs), sum(r["Штук"] for r in rs),
+            round(sum(r["вес"] for r in rs), 1),
+            chk["По упаковочному листу, шт"] if chk else "листа нет",
+            diff if diff else ("" if chk else "—"),
+            inside,
+        ], wrap=(1, 7), center=(2, 3, 4, 5, 6),
+            fill=WARN_FILL if diff else None)
+    row = put(ws, row, [
+        "ИТОГО", sum(len(v) for v in places.values()),
+        sum(r["Штук"] for v in places.values() for r in v),
+        round(sum(r["вес"] for v in places.values() for r in v)), "", "", "",
+    ], center=(2, 3, 4), font=BOLD, fill=GROUP_FILL)
+
+    row += 1
+    for t in [
+        "«Без упаковки» — это не недосмотр: крупная арматура и задвижки "
+        "едут россыпью на полу и на доске, упаковочный лист им не "
+        "нужен. Места с листами — это ящик и коробки с мелочью.",
+        "Расхождение по месту значит, что в коробке лежит не то, что "
+        "записано в перечне. Оранжевым подсвечено, разобрать до "
+        "приемки: три рабочих дня истекут быстро.",
+    ] + ([f"Упаковочные листы, которые не удалось разобрать: "
+          f"{', '.join('№' + str(f) for f in failed)}. Их надо сверить "
+          f"глазами."] if failed else []):
+        cell = ws.cell(row=row, column=1, value="— " + t)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=row, start_column=1,
+                       end_row=row, end_column=len(COLS_PACK))
+        ws.row_dimensions[row].height = 30
+        row += 1
+
+    widths(ws, [w for _, w in COLS_PACK])
+    ws.page_setup.orientation = "landscape"
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+
+
+def by_num_key(place):
+    """Номер места из подписи «коробка № 7». Ноль, если номера нет."""
+    import re
+    m = re.search(r"№\s*(\d+)", place)
+    return int(m.group(1)) if m else 0
+
+
+COLS_DIFF = [
+    ("Что изменилось", 20), ("Наименование", 52), ("Чертеж", 18),
+    ("Было, шт", 10), ("Стало, шт", 10), ("Было, кг", 10),
+    ("Стало, кг", 10), ("Группа", 26),
+]
+
+
+def sheet_diff(wb):
+    """Чем фактическая отгрузка отличается от перечня 21.10."""
+    import re
+    ws = wb.create_sheet("План и факт")
+    ws["A1"] = "Чем отгрузка отличается от плана"
+    ws["A1"].font = TITLE
+
+    # План читаем целиком, вместе со снятыми позициями: иначе
+    # стальной Ду300 пропадет с обеих сторон и видно не будет, что
+    # решение о снятии исполнено.
+    plan = container_list.read(container_list.PLAN, skip_excluded=False)
+    fact = container_list.read()
+
+    def k(r):
+        return (re.sub(r"\s+", " ", r["Наименование"].strip().lower()),
+                re.sub(r"\s+", "", (r["Чертеж"] or "").lower()), r["Ду"])
+
+    pi, fi = {}, {}
+    for r in plan:
+        pi.setdefault(k(r), []).append(r)
+    for r in fact:
+        fi.setdefault(k(r), []).append(r)
+
+    added = [r for kk in fi if kk not in pi for r in fi[kk]]
+    gone = [r for kk in pi if kk not in fi for r in pi[kk]]
+    changed = []
+    for kk in fi:
+        if kk not in pi:
+            continue
+        fq = sum(r["Штук"] for r in fi[kk])
+        pq = sum(r["Штук"] for r in pi[kk])
+        fk = sum(r["вес"] for r in fi[kk])
+        pk = sum(r["вес"] for r in pi[kk])
+        if fq != pq or abs(fk - pk) > 0.5:
+            changed.append((pi[kk][0], fi[kk][0], pq, fq, pk, fk))
+
+    ws["A2"] = (f"План 21.10: {len(plan)} позиций, "
+                f"{rub(sum(r['Штук'] for r in plan))} шт, "
+                f"{rub(round(sum(r['вес'] for r in plan)))} кг. "
+                f"Факт 26.10: {len(fact)} позиций, "
+                f"{rub(sum(r['Штук'] for r in fact))} шт, "
+                f"{rub(round(sum(r['вес'] for r in fact)))} кг.")
+    ws["A2"].font = NOTE
+
+    start = 4
+    for i, (h, _) in enumerate(COLS_DIFF, start=1):
+        ws.cell(row=start, column=i, value=h)
+    head(ws, start, len(COLS_DIFF))
+    row = start + 1
+    for r in sorted(added, key=lambda x: -x["вес"]):
+        row = put(ws, row, [
+            "ДОГРУЗИЛИ", r["Наименование"], r["Чертеж"] or "—", "",
+            r["Штук"], "", round(r["вес"], 1), r["Группа"],
+        ], wrap=(2, 8), center=(4, 5, 6, 7), fill=OK_FILL)
+    for r in sorted(gone, key=lambda x: -x["вес"]):
+        row = put(ws, row, [
+            "НЕ ПОЕХАЛО", r["Наименование"], r["Чертеж"] or "—",
+            r["Штук"], "", round(r["вес"], 1), "", r["Группа"],
+        ], wrap=(2, 8), center=(4, 5, 6, 7), fill=WARN_FILL)
+    for p_, f_, pq, fq, pk, fk in sorted(changed,
+                                         key=lambda x: -abs(x[5] - x[4])):
+        row = put(ws, row, [
+            "ПЕРЕСЧИТАЛИ", f_["Наименование"], f_["Чертеж"] or "—",
+            pq, fq, round(pk, 1), round(fk, 1), f_["Группа"],
+        ], wrap=(2, 8), center=(4, 5, 6, 7), fill=MARK_FILL)
+    row = put(ws, row, [
+        "ИТОГО", f"догрузили {len(added)}, не поехало {len(gone)}, "
+        f"пересчитали {len(changed)}", "",
+        sum(r["Штук"] for r in gone), sum(r["Штук"] for r in added),
+        round(sum(r["вес"] for r in gone)),
+        round(sum(r["вес"] for r in added)), "",
+    ], wrap=(2,), center=(4, 5, 6, 7), font=BOLD, fill=GROUP_FILL)
+
+    row += 1
+    for t in [
+        "Стальная задвижка Ду300, снятая 22.10, стоит здесь строкой "
+        "«не поехало» — решение собственника исполнено, бригада ее не "
+        "грузила.",
+        "«Задвижки (желтая)» 544-03.046 в факте весят 1,4 кг за штуку "
+        "вместо прежних 40. Это 18 кг на позицию вместо 520: наш "
+        "справочный вес был завышен в 29 раз.",
+        "Догруженное — это не самовольство бригады, а то, что нашлось "
+        "при отборе. Но цены по этим позициям в Договоре нет, и по "
+        "пункту 3.5 проданными они не считаются.",
+    ]:
+        cell = ws.cell(row=row, column=1, value="— " + t)
+        cell.font = BASE
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=row, start_column=1,
+                       end_row=row, end_column=len(COLS_DIFF))
+        ws.row_dimensions[row].height = 30
+        row += 1
+
+    widths(ws, [w for _, w in COLS_DIFF])
+    ws.page_setup.orientation = "landscape"
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+
+
 def sheet_stowage(wb, rows, tot):
     ws = wb.create_sheet("Укладка")
     ws["A1"] = "Как укладываем"
@@ -685,13 +886,16 @@ def sheet_stowage(wb, rows, tot):
 
 
 def sheet_checklist(wb, rows, tot):
-    ws = wb.create_sheet("Перед погрузкой")
+    ws = wb.create_sheet("Что закрыть")
     open_price = [r for r in rows if r["price"] == AGREE]
     no_draw = [r for r in rows if not r["draw"]]
-    ws["A1"] = "Что закрыть до того, как придет машина"
+    checks, failed = packing_lists.check()
+    bad = [c for c in checks if c["Расхождение"]]
+    ws["A1"] = "Что закрыть после отгрузки"
     ws["A1"].font = TITLE
-    ws["A2"] = ("Порядок по важности: сверху то, без чего товар по "
-                "договору не считается проданным.")
+    ws["A2"] = ("Контейнер ушел 26.10.2026. Порядок по важности: "
+                "сверху то, без чего товар по Договору не считается "
+                "проданным и расчет по нему не пойдет.")
     ws["A2"].font = NOTE
     start = 4
     for i, h in enumerate(["№", "Что сделать", "Почему это важно",
@@ -707,31 +911,35 @@ def sheet_checklist(wb, rows, tot):
         ("Согласовать цену по электромагнитным клапанам",
          "по ставке за килограмм они не считаются, цена у них от "
          "привода и катушки"),
-        ("Снять и уложить маховики в ящик с биркой, "
-         f"по перечню их {rub(tot['wheels'])} шт",
-         "без маховика задвижка неполная; россыпью они теряются и "
-         "превращаются в претензию по комплектности"),
-        ("Взвесить на погрузке хотя бы по одной задвижке каждого "
-         "диаметра и один крупный фильтр",
-         "веса паспортные; прошлый справочник врал вдвое, и цена "
-         "считается ОТ ВЕСА — ошибка в весе это ошибка в деньгах"),
+        ("Подписать приложение № 4 к Договору по ФАКТУ отгрузки",
+         "уехало не то, что планировали: 7 позиций догрузили, 2 не "
+         "поехали, по 4 пересчитали количество. Старое приложение "
+         "фактической передаче уже не соответствует"),
+        ("Согласовать цену по догруженным позициям: колонка "
+         "указательная, крышки с коменсом и жалюзи, грибок Ду200",
+         "их не было в плане, и цены в Договоре по ним нет; "
+         "по пункту 3.5 проданными они не считаются"),
+        (f"Разобрать расхождение по коробке № "
+         f"{', '.join(str(c['Место']) for c in bad)}"
+         if bad else "Сверить коробки с упаковочными листами",
+         "в коробке лежит не то, что записано в перечне; приемка в "
+         "Петербурге идет 3 рабочих дня по пункту 2.2, потом товар "
+         "считается принятым"),
+        ("Принимать груз в Петербурге ПО МЕСТАМ, вкладка «Упаковка»",
+         "13 мест с упаковочными листами плюс мешки; по общему "
+         "перечню недостачу в коробке не увидеть"),
+        ("Свериться с фактическим весом по транспортным документам",
+         "веса паспортные, и цена считается ОТ ВЕСА. По желтым "
+         "задвижкам факт уже разошелся со справочником в 29 раз"),
         (f"Переписать чертежи с корпуса у {len(no_draw)} позиций без "
          f"чертежа", "без чертежа позицию трудно продать и невозможно "
          "сверить с прайсом"),
-        ("Проверить, что снятые позиции физически не поехали",
-         "они исключены в расчете, но на складе лежат рядом"),
-        ("Заказать доску: "
-         f"{rub(round(tot['brd']))} кг сырой необрезной",
-         "перекладка между ярусами; сухую не берем, дороже и не найти"),
-        ("Заказать погрузчик и бригаду: подача 12 000, 2 000 в час, "
-         "четверо грузчиков по 750 в час, около 4 часов",
-         "контейнер выходит примерно в 32 000 руб"),
-        ("Сфотографировать укладку по ярусам до закрытия дверей",
-         "приемка в Петербурге идет 3 рабочих дня по пункту 2.2, "
-         "потом товар считается принятым"),
-        ("Отдать бригаде вкладку «Перечень», менеджеру — «По группам»",
-         "бригаде нужны вес и тара, менеджеру цена и что нельзя "
-         "грузить без согласования"),
+        (f"Проверить комплектность маховиков: по перечню их "
+         f"{rub(tot['wheels'])} шт",
+         "без маховика задвижка неполная, это претензия по "
+         "комплектности"),
+        ("Списать отгруженное со складского учета в тот же день",
+         "иначе расхождение накопится снова, как было к 16.06.2025"),
     ], start=1):
         row = put(ws, row, [n, what, why, ""], wrap=(2, 3), center=(1,),
                   height=44, fill=WARN_FILL if n <= 2 else None)
@@ -763,12 +971,14 @@ def main():
     sheet_groups(wb, rows)
     sheet_items(wb, rows)
     sheet_buy(wb, rows)
+    sheet_packing(wb)
+    sheet_diff(wb)
     sheet_stowage(wb, rows, tot)
     sheet_checklist(wb, rows, tot)
     sheet_excluded(wb)
 
     OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / "Контейнер_погрузка.xlsx"
+    path = OUT / "Контейнер_отгружено_26.10.xlsx"
     wb.save(path)
     print(f"готово: {path}\n")
     print(f"{len(rows)} позиций, {rub(tot['qty'])} шт, "
