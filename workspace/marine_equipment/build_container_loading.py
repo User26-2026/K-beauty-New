@@ -228,15 +228,31 @@ def sheet_summary(wb, rows, blocks):
         ("Разница 3 минус 1 и 2", f"{rub(resale - money - repair)} руб",
          "сколько цепочка дает сверх закупа и ремонта", None),
         ("", "", "", None),
+        ("", "", "", None),
+        ("Контейнер", upd_shipments.CONTAINER_SHIPMENT["container"],
+         f"ЗПУ {upd_shipments.CONTAINER_SHIPMENT['seal']}, "
+         f"{upd_shipments.CONTAINER_SHIPMENT['waybill']}", None),
+        ("Автодоставка во Владивостоке",
+         f"{rub(round(upd_shipments.CONTAINER_COSTS['auto_total_vat']))} руб",
+         f"с НДС, из них простой "
+         f"{rub(round(upd_shipments.CONTAINER_COSTS['idle_net'] * 1.22))} руб "
+         f"— машина стояла 10 часов вместо 4", WARN_FILL),
+        ("Транспортно-экспедиторские услуги",
+         f"{rub(round(upd_shipments.CONTAINER_COSTS['forwarding_vat']))} руб",
+         "с НДС, счет № 4013311 от 29.10.2026", None),
+        ("", "", "", None),
         ("Маховиков", f"{rub(wheels)} шт",
          "снимаются в ящик с биркой, считать при погрузке", MARK_FILL),
-        ("Цена «по согласованию»", f"{len(open_price)} позиций, "
+        ("Цена «по согласованию»", f"{len(open_price)} "
+         f"{plural(len(open_price), 'позиция', 'позиции', 'позиций')}, "
          f"{rub(sum(r['kg'] for r in open_price))} кг",
          "по пункту 3.5 проданным не считается — закрыть до отгрузки",
          WARN_FILL),
-        ("Цена не ставится", f"{len(no_price)} позиций",
+        ("Цена не ставится", f"{len(no_price)} "
+         f"{plural(len(no_price), 'позиция', 'позиции', 'позиций')}",
          "электромагнитные, цена не от массы металла", MARK_FILL),
-        ("Не считаем от металла", f"{len(no_metal)} позиций, "
+        ("Не считаем от металла", f"{len(no_metal)} "
+         f"{plural(len(no_metal), 'позиция', 'позиции', 'позиций')}, "
          f"{rub(round(sum(r['kg'] for r in no_metal)))} кг",
          "электромагнитные и редукционные клапаны, клапаны Ру от 100, "
          "сталь и титан — цену согласовываем отдельно", MARK_FILL),
