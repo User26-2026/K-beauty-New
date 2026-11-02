@@ -448,6 +448,14 @@ def signatures(doc):
             run._element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
 
 
+def cap(text):
+    """Подзаголовок группы с заглавной буквы. В перечне часть групп
+    набрана со строчной («клапан для колонки смотровой»), а в
+    подписываемом документе это выглядит небрежно."""
+    t = str(text or "")
+    return t[:1].upper() + t[1:] if t else t
+
+
 def rub(n):
     return f"{n:,.0f}".replace(",", " ")
 
@@ -634,7 +642,7 @@ def sheet_annex4(doc, data):
     t = table(doc, HEAD, W)
     n = 0
     for b in data["annex4"]["blocks"]:
-        span(t, f"{b['group']} — {len(b['items'])} "
+        span(t, f"{cap(b['group'])} — {len(b['items'])} "
                 f"{plural(len(b['items']), 'позиция', 'позиции', 'позиций')}"
                 f", {rub(b['qty'])} шт, {rub(b['kg'])} кг", W)
         for it in b["items"]:
@@ -644,7 +652,9 @@ def sheet_annex4(doc, data):
                     it["price"],
                     rub(it["repair"]) if it["repair"] else "",
                     it["resale"]], W, center=CENTER)
-    span(t, f"ИТОГО {a['positions']} позиций, {rub(a['qty'])} шт, "
+    span(t, f"ИТОГО {a['positions']} "
+            f"{plural(a['positions'], 'позиция', 'позиции', 'позиций')}, "
+            f"{rub(a['qty'])} шт, "
             f"{rub(a['kg'])} кг, по Договору {a['sum']} руб, "
             f"ремонт {rub(a['repair_sum'])} руб", W, color="BFBFBF")
 

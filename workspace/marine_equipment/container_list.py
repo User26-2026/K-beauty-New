@@ -39,6 +39,8 @@ import re
 
 from openpyxl import load_workbook
 
+import materials
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SPB = ROOT / "data" / "marine_equipment" / "spb_list"
 SRC = SPB / "Факт_контейнер_26.10.26.xlsx"
@@ -51,6 +53,17 @@ COL = dict(num=1, photo=2, name=3, du=4, ru=5, draw=6, cond=7, qty=8,
            pack=14)
 
 NO_DRAW = re.compile(r"без\s*чертежа|^-+$|^\.+$", re.I)
+
+# Позиции, которые в перечне идут после ЧУЖОГО подзаголовка и своего
+# не имеют: в файле между ними пустая строка, а заголовка нет. Без
+# этого правила колонки указательные, крышки с коменсом и желтые
+# задвижки попадают в группу «Клапан невозвратно-приемный», к которой
+# отношения не имеют, и так уходят в спецификацию.
+OWN_GROUP = [
+    (re.compile(r"колонка\s+указательная", re.I), "Прочее"),
+    (re.compile(r"крышка\s+с\s+коменсом", re.I), "Прочее"),
+    (re.compile(r"задвижк\w*\s*\(желт", re.I), "Прочее"),
+]
 
 # Позиции, снятые с отгрузки по решению собственника. Ключ — очищенное
 # наименование, значение — почему сняли. В спецификацию и в расчеты
@@ -82,8 +95,17 @@ def num(v):
     return float(s) if re.match(r"^-?\d+(\.\d+)?$", s) else None
 
 
-def material(name, group):
-    """Материал позиции по названию и группе перечня."""
+def material(name, group, drawing=""):
+    """Материал позиции.
+
+    Сначала смотрим подтвержденные владельцем материалы: там ключ —
+    номер чертежа, и это факт, а не догадка по названию. Иначе
+    «Задвижки (желтая)» 544-03.046 считались бы бронзой, хотя
+    подтверждено, что это сталь: в названии слова «сталь» нет.
+    """
+    confirmed = materials.known(name, drawing)
+    if confirmed:
+        return confirmed
     s = f"{name} {group}".lower()
     if "титан" in s:
         return "титан"
@@ -138,9 +160,10 @@ def read(src=SRC, skip_excluded=True):
             continue
         unit = num(cell("unit_kg")) or 0
         draw = text(cell("draw"))
+        own = next((g for rx, g in OWN_GROUP if rx.search(name)), "")
         rows.append({
             "Наименование": name,
-            "Группа": group,
+            "Группа": own or group,
             "Ду": int(num(cell("du")) or 0),
             "Ру": text(cell("ru")),
             "Чертеж": "" if NO_DRAW.search(draw) else draw,
@@ -150,7 +173,7 @@ def read(src=SRC, skip_excluded=True):
             "вес": num(cell("kg")) or qty * unit,
             "Маховиков": num(cell("handwheel")),
             "Упаковка": text(cell("pack")),
-            "Материал": material(name, group),
+            "Материал": material(name, own or group, draw),
         })
     return rows
 
