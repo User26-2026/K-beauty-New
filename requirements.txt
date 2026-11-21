@@ -2,3 +2,5 @@ openpyxl
 pandas
 pypdf
 reportlab
+xlrd
+python-calamine
